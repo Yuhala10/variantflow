@@ -1,59 +1,112 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '../../../../lib/supabase/admin';
 
-const isValidSignature = (payload: string, signature: string, secret: string) => {
-    const expected = createHmac('sha256', secret).update(payload).digest('hex');
-    const provided = Buffer.from(signature, 'utf8');
-    const calculated = Buffer.from(expected, 'utf8');
-    return provided.length === calculated.length && timingSafeEqual(provided, calculated);
+type PaymentoVerifyResponse = {
+    success?: boolean;
+    message?: string;
+    body?: {
+        token?: string;
+        orderId?: string;
+        orderStatus?: string | number;
+        additionalData?: Array<{ key?: string; value?: string }>;
+        settlement?: { expectedCryptoAmount?: number; transactions?: Array<{ txHash?: string }> };
+    };
 };
 
-export async function POST(request: Request) {
-    const secret = process.env.PAYMENTO_WEBHOOK_SECRET;
-    const admin = createSupabaseAdminClient();
-    if (!secret || !admin) return NextResponse.json({ error: 'Payment webhook is not configured.' }, { status: 503 });
-
-    const rawBody = await request.text();
-    const signature = request.headers.get('x-paymento-signature') || '';
-    if (!isValidSignature(rawBody, signature, secret)) {
-        return NextResponse.json({ error: 'Invalid webhook signature.' }, { status: 401 });
+const getValue = (body: Record<string, unknown>, names: string[]) => {
+    for (const name of names) {
+        const value = body[name];
+        if (typeof value === 'string' && value.trim()) return value.trim();
     }
+    return undefined;
+};
 
-    const body = JSON.parse(rawBody) as {
-        invoiceId?: string;
-        status?: string;
-        transactionHash?: string;
-    };
-    const invoiceId = body.invoiceId;
-    const normalizedStatus = body.status?.toLowerCase();
-    if (!invoiceId || !['confirmed', 'failed', 'expired'].includes(normalizedStatus || '')) {
-        return NextResponse.json({ error: 'Invalid payment event.' }, { status: 400 });
-    }
+const verifyPaymentoToken = async (token: string) => {
+    const apiKey = process.env.PAYMENTO_SECRET_KEY;
+    if (!apiKey) throw new Error('PAYMENTO_SECRET_KEY is not configured.');
 
-    const { data: payment, error: paymentError } = await admin
-        .from('payment_events')
-        .select('user_id, tier')
-        .eq('invoice_id', invoiceId)
-        .maybeSingle();
-    if (paymentError || !payment) return NextResponse.json({ error: 'Invoice not found.' }, { status: 404 });
+    const response = await fetch('https://api.paymento.io/v1/payment/verify', {
+        method: 'POST',
+        headers: {
+            'Api-key': apiKey,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+        },
+        body: JSON.stringify({ token }),
+        cache: 'no-store',
+    });
 
-    const { error: updateError } = await admin
-        .from('payment_events')
-        .update({
-            status: normalizedStatus,
-            transaction_hash: body.transactionHash || null,
-            confirmed_at: normalizedStatus === 'confirmed' ? new Date().toISOString() : null,
-        })
-        .eq('invoice_id', invoiceId);
-    if (updateError) return NextResponse.json({ error: 'Unable to update payment event.' }, { status: 500 });
+    if (!response.ok) throw new Error(`Paymento verification failed with HTTP ${response.status}.`);
+    return await response.json() as PaymentoVerifyResponse;
+};
 
-    if (normalizedStatus === 'confirmed') {
-        await admin
-            .from('subscriptions')
-            .update({ tier: payment.tier, status: 'active', updated_at: new Date().toISOString() })
-            .eq('user_id', payment.user_id);
-    }
+const additionalValue = (data: PaymentoVerifyResponse['body'], keys: string[]) =>
+    data?.additionalData?.find((item) => keys.includes((item.key || '').toLowerCase()))?.value;
 
-    return NextResponse.json({ received: true });
+export async function GET() {
+    return NextResponse.json({ ok: true, endpoint: 'paymento-webhook' });
 }
+
+export async function OPTIONS() {
+    return new NextResponse(null, { status: 204 });
+}
+
+export async function POST(request: Request) {
+    const admin = createSupabaseAdminClient();
+    if (!admin) return NextResponse.json({ error: 'Supabase server configuration is incomplete.' }, { status: 503 });
+
+    const contentType = request.headers.get('content-type') || '';
+    let input: Record<string, unknown> = {};
+    if (contentType.includes('application/json')) {
+        input = await request.json().catch(() => ({}));
+    } else {
+        const form = await request.formData();
+        form.forEach((value, key) => { input[key] = String(value); });
+    }
+
+    const token = getValue(input, ['token', 'paymentToken', 'payment_token', 'orderToken', 'order_token']);
+    if (!token) {
+        // Paymento's dashboard test may send a connectivity probe without a real payment token.
+        return NextResponse.json({ received: true, verified: false, message: 'Webhook endpoint reachable; no payment token supplied.' });
+    }
+
+    let verified: PaymentoVerifyResponse;
+    try {
+        verified = await verifyPaymentoToken(token);
+    } catch (error) {
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Payment verification failed.' }, { status: 502 });
+    }
+
+    const payment = verified.body;
+    const status = String(payment?.orderStatus ?? '').toLowerCase();
+    const approved = verified.success === true || status === '8' || status === 'approve' || status === 'approved';
+    if (!approved) {
+        return NextResponse.json({ received: true, verified: false, orderStatus: payment?.orderStatus ?? null });
+    }
+
+    const email = getValue(input, ['email', 'customerEmail', 'customer_email'])
+        || additionalValue(payment, ['email', 'customeremail', 'customer_email']);
+    const tier = (getValue(input, ['plan', 'tier']) || additionalValue(payment, ['plan', 'tier', 'variantflow_plan']))?.toUpperCase();
+    if (!email || (tier !== 'PRO' && tier !== 'SCALE')) {
+        return NextResponse.json({ error: 'Approved payment is missing the customer email or VariantFlow plan.' }, { status: 422 });
+    }
+
+    const { data: profile } = await admin.from('profiles').select('id').eq('email', email).maybeSingle();
+    if (!profile) return NextResponse.json({ error: 'No VariantFlow account matches the payment email.' }, { status: 404 });
+
+    const transactionHash = payment?.settlement?.transactions?.find((transaction) => transaction.txHash)?.txHash || null;
+    await admin.from('subscriptions').update({ tier, status: 'active', updated_at: new Date().toISOString() }).eq('user_id', profile.id);
+    await admin.from('payment_events').upsert({
+        user_id: profile.id,
+        invoice_id: payment?.orderId || token,
+        tier,
+        amount_usdt: payment?.settlement?.expectedCryptoAmount || 0,
+        transaction_hash: transactionHash,
+        status: 'confirmed',
+        payload: verified,
+        confirmed_at: new Date().toISOString(),
+    }, { onConflict: 'invoice_id' });
+
+    return NextResponse.json({ received: true, verified: true, tier });
+}
+
