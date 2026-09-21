@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { invoices } from '../create/route';
 import { createSupabaseServerClient } from '../../../../lib/supabase/server';
 
 export async function GET(request: NextRequest) {
@@ -9,8 +8,6 @@ export async function GET(request: NextRequest) {
   if (!invoiceId) {
     return NextResponse.json({ status: 'INVALID' }, { status: 400 });
   }
-
-  const invoice = invoices.get(invoiceId);
 
   const supabase = await createSupabaseServerClient();
   if (supabase) {
@@ -28,15 +25,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ status: payment.status.toUpperCase(), tier: payment.tier });
   }
 
-  if (!invoice) {
-    return NextResponse.json({ status: 'PENDING' }, { status: 404 });
-  }
-
-  if (invoice.status === 'CONFIRMED') {
-    return NextResponse.json({ status: 'CONFIRMED', tier: invoice.tier });
-  }
-
-  return NextResponse.json({ status: 'PENDING' });
+  return NextResponse.json({ status: 'UNAVAILABLE', error: 'Payment activation is not connected to Paymento yet.' }, { status: 503 });
 }
 
 export async function POST(request: NextRequest) {

@@ -86,18 +86,10 @@ export const WorkspaceLayout: React.FC<WorkspaceLayoutProps> = ({
                 return;
             }
 
-            throw new Error('Gateway unavailable');
+            const errorPayload = await response.json().catch(() => null);
+            throw new Error(errorPayload?.error || 'Payment service unavailable.');
         } catch (err) {
-            const targetedPlan = BILLING_PLANS[selectedTier];
-            const fallbackAddress = 'TQwzVg8aS7uJmGfD9K2yTw7kJmRUhZsYVn';
-            setInvoice({
-                invoiceId: `${selectedTier.toLowerCase()}-${Date.now()}`,
-                status: 'PENDING',
-                depositAddress: fallbackAddress,
-                amountUsdt: targetedPlan.priceUsdt,
-                planName: targetedPlan.name,
-                createdLocally: true
-            });
+            alert(err instanceof Error ? err.message : 'Payment service unavailable.');
         } finally {
             setLoading(false);
         }
@@ -107,14 +99,6 @@ export const WorkspaceLayout: React.FC<WorkspaceLayoutProps> = ({
         navigator.clipboard.writeText(address);
         setCopySuccess(true);
         setTimeout(() => setCopySuccess(false), 2000);
-    };
-
-    const finalizeLocalUpgrade = () => {
-        const allowedMaxRuns = selectedTier === 'PRO' ? 2000 : 15000;
-        onUpgradeSuccess(selectedTier);
-        setSubscriptionState?.(selectedTier, 0, allowedMaxRuns);
-        setInvoice(null);
-        setIsBillingOpen(false);
     };
 
     return (
