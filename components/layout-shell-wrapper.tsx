@@ -72,6 +72,16 @@ export const WorkspaceLayout: React.FC<WorkspaceLayoutProps> = ({
         setLoading(true);
         try {
             const targetedPlan = BILLING_PLANS[selectedTier];
+            const paymentLink = selectedTier === 'PRO'
+                ? process.env.NEXT_PUBLIC_PAYMENTO_PRO_LINK
+                : process.env.NEXT_PUBLIC_PAYMENTO_SCALE_LINK;
+
+            if (paymentLink) {
+                window.open(paymentLink, '_blank', 'noopener,noreferrer');
+                setLoading(false);
+                return;
+            }
+
             const response = await fetch('/api/paymento/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
