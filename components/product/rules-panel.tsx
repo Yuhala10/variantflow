@@ -1,137 +1,156 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
+import { Plus, X } from 'lucide-react';
 import { useProductStore } from '../../store/productStore';
-import { Input } from '../ui/input';
-import { Button } from '../ui/button';
-import { Plus, Sliders, DollarSign, Cpu } from 'lucide-react';
+
+const formatModifier = (value: number) => `${value >= 0 ? '+' : '−'}$${Math.abs(value).toFixed(2)}`;
 
 export const RulesPanel: React.FC = () => {
-    const {
-        skuConfig,
-        setSkuTemplate,
-        basePrice,
-        setBasePrice,
-        priceRules,
-        addPriceRule,
-        removePriceRule,
-    } = useProductStore();
+    const { options, variants, skuConfig, setSkuTemplate, basePrice, setBasePrice, priceRules, addPriceRule, removePriceRule } = useProductStore();
+    const [ruleTarget, setRuleTarget] = useState('');
+    const [ruleModifier, setRuleModifier] = useState('');
+    const skuInputRef = useRef<HTMLInputElement>(null);
 
-    const [ruleAttr, setRuleAttr] = useState('');
-    const [ruleMod, setRuleMod] = useState('');
+    const tokens = options.map((option) => option.name.trim()).filter(Boolean);
+    const allValues = useMemo(
+        () => [...new Set(options.flatMap((option) => option.values.map((value) => value.trim()).filter(Boolean)))],
+        [options],
+    );
+    const previewSku = variants[0]?.sku;
 
-    const handleAddPriceRule = (e: React.FormEvent) => {
-        e.preventDefault();
-        const parsedMod = parseFloat(ruleMod);
-        if (!ruleAttr.trim() || Number.isNaN(parsedMod)) return;
-        addPriceRule(ruleAttr.trim(), parsedMod);
-        setRuleAttr('');
-        setRuleMod('');
+    const insertToken = (token: string) => {
+        const input = skuInputRef.current;
+        const insert = `{${token.toUpperCase()}}`;
+        const pattern = skuConfig.pattern;
+        const start = input?.selectionStart ?? pattern.length;
+        const end = input?.selectionEnd ?? pattern.length;
+        const separator = start > 0 && !/[-_]$/.test(pattern.slice(0, start)) ? '-' : '';
+        const next = `${pattern.slice(0, start)}${separator}${insert}${pattern.slice(end)}`;
+        setSkuTemplate(next);
+        requestAnimationFrame(() => {
+            const caret = start + separator.length + insert.length;
+            input?.focus();
+            input?.setSelectionRange(caret, caret);
+        });
+    };
+
+    const handleAddRule = (event: React.FormEvent) => {
+        event.preventDefault();
+        const modifier = parseFloat(ruleModifier);
+        if (!ruleTarget.trim() || Number.isNaN(modifier)) return;
+        addPriceRule(ruleTarget.trim(), modifier);
+        setRuleTarget('');
+        setRuleModifier('');
     };
 
     return (
-        <div className="space-y-6">
-            <div className="space-y-2">
-                <div className="flex items-center gap-1.5">
-                    <Cpu className="w-3.5 h-3.5 text-slate-500" />
-                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        SKU Template Pattern
-                    </label>
-                </div>
-                <Input
+        <div className="space-y-7">
+            <div>
+                <label htmlFor="sku-pattern" className="label">SKU pattern</label>
+                <input
+                    ref={skuInputRef}
+                    id="sku-pattern"
                     type="text"
                     value={skuConfig.pattern}
-                    onChange={(e) => setSkuTemplate(e.target.value)}
-                    placeholder="e.g., TSH-{COLOR}-{SIZE}"
-                    className="h-11 border-slate-200 font-mono tracking-wide text-xs focus-visible:ring-1 focus-visible:ring-slate-900 bg-white shadow-none uppercase"
+                    onChange={(event) => setSkuTemplate(event.target.value)}
+                    placeholder="e.g. TSH-{COLOR}-{SIZE}"
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="field font-mono text-sm uppercase tracking-wide"
                 />
-                <p className="text-[10px] text-slate-400 leading-normal px-0.5">
-                    Token variables mapped automatically inside curly braces. Match option names case-insensitively, for example <code className="bg-slate-100 px-1 py-0.5 rounded text-indigo-600 font-mono">{'{COLOR}'}</code>.
+                {tokens.length > 0 && (
+                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs text-ink-3">Insert:</span>
+                        {tokens.map((token) => (
+                            <button
+                                key={token}
+                                type="button"
+                                onClick={() => insertToken(token)}
+                                className="kbd min-h-8 px-2 transition-colors hover:border-brand/40 hover:bg-brand-soft"
+                            >
+                                {`{${token.toUpperCase()}}`}
+                            </button>
+                        ))}
+                    </div>
+                )}
+                <p className="hint">
+                    {previewSku
+                        ? <>First SKU: <span className="font-mono font-medium text-ink-2">{previewSku}</span></>
+                        : 'Option names in curly braces are replaced with each variant’s values.'}
                 </p>
             </div>
 
-            <div className="pt-4 border-t border-slate-100 space-y-4">
-                <div className="flex items-center gap-1.5">
-                    <DollarSign className="w-3.5 h-3.5 text-slate-500" />
-                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                        Base Matrix Price ($)
-                    </label>
+            <div>
+                <label htmlFor="base-price" className="label">Base price</label>
+                <div className="relative">
+                    <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-ink-3">$</span>
+                    <input
+                        id="base-price"
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        min="0"
+                        value={basePrice || ''}
+                        onChange={(event) => setBasePrice(parseFloat(event.target.value) || 0)}
+                        placeholder="0.00"
+                        className="field pl-7 tabular-nums"
+                    />
                 </div>
-                <Input
-                    type="number"
-                    step="0.01"
-                    value={basePrice || ''}
-                    onChange={(e) => setBasePrice(parseFloat(e.target.value) || 0)}
-                    className="h-11 border-slate-200 text-sm font-medium focus-visible:ring-1 focus-visible:ring-slate-900 bg-white shadow-none"
-                />
+            </div>
 
-                <div className="space-y-3 pt-2">
-                    <div className="flex items-center gap-1.5">
-                        <Sliders className="w-3.5 h-3.5 text-slate-500" />
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                            Cost Modifier Rules
-                        </h4>
-                    </div>
+            <div>
+                <h3 className="label">Price adjustments</h3>
+                <p className="-mt-1 mb-3 text-xs text-ink-3">Add or subtract an amount when a variant has a specific value.</p>
 
-                    {priceRules.length === 0 ? (
-                        <div className="text-[11px] text-slate-400 italic bg-slate-50/50 rounded-xl p-3 border border-dashed border-slate-200 text-center">
-                            No conditional price modifications active.
-                        </div>
-                    ) : (
-                        <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                            {priceRules.map((rule) => (
-                                <div
-                                    key={rule.id}
-                                    className="flex items-center justify-between text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 font-medium text-slate-700"
-                                >
-                                    <span>
-                                        When attribute matches{' '}
-                                        <strong className="text-slate-900 font-semibold bg-white border px-1.5 py-0.5 rounded shadow-sm">
-                                            {rule.targetValue}
-                                        </strong>
+                {priceRules.length > 0 && (
+                    <ul className="mb-3 space-y-2">
+                        {priceRules.map((rule) => (
+                            <li key={rule.id} className="animate-rise flex items-center justify-between gap-3 rounded-xl border border-line bg-canvas/60 py-1.5 pl-3.5 pr-1.5 text-sm">
+                                <span className="min-w-0 truncate text-ink-2">
+                                    When <span className="font-semibold text-ink">{rule.targetValue}</span>
+                                </span>
+                                <span className="flex items-center gap-1">
+                                    <span className={`chip tabular-nums ${rule.modifier >= 0 ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'}`}>
+                                        {formatModifier(rule.modifier)}
                                     </span>
-                                    <div className="flex items-center gap-3">
-                                        <span className={rule.modifier >= 0 ? 'text-emerald-600' : 'text-rose-600 font-medium'}>
-                                            {rule.modifier >= 0 ? `+$${rule.modifier.toFixed(2)}` : `-$${Math.abs(rule.modifier).toFixed(2)}`}
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={() => removePriceRule(rule.id)}
-                                            className="text-slate-400 hover:text-rose-600 transition-colors text-[10px]"
-                                        >
-                                            ✕
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                                    <button type="button" onClick={() => removePriceRule(rule.id)} aria-label={`Remove rule for ${rule.targetValue}`} className="btn btn-ghost btn-icon btn-sm text-ink-3">
+                                        <X />
+                                    </button>
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                )}
 
-                    <form onSubmit={handleAddPriceRule} className="flex gap-2 pt-1">
-                        <Input
-                            type="text"
-                            placeholder="e.g., XL"
-                            value={ruleAttr}
-                            onChange={(e) => setRuleAttr(e.target.value)}
-                            className="h-9 w-1/2 border-slate-200 bg-white text-xs shadow-none rounded-lg focus-visible:ring-1 focus-visible:ring-slate-900"
-                        />
-                        <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="+$2.00"
-                            value={ruleMod}
-                            onChange={(e) => setRuleMod(e.target.value)}
-                            className="h-9 w-5/12 border-slate-200 bg-white text-xs shadow-none rounded-lg focus-visible:ring-1 focus-visible:ring-slate-900"
-                        />
-                        <Button
-                            type="submit"
-                            size="icon"
-                            className="h-9 w-9 bg-slate-950 hover:bg-slate-800 text-white rounded-lg flex items-center justify-center transition-colors shadow-sm"
-                        >
-                            <Plus className="w-4 h-4" />
-                        </Button>
-                    </form>
-                </div>
+                <form onSubmit={handleAddRule} className="grid grid-cols-[1fr_7rem_auto] gap-2">
+                    <input
+                        type="text"
+                        list="price-rule-values"
+                        placeholder="Value, e.g. XL"
+                        aria-label="Option value"
+                        value={ruleTarget}
+                        onChange={(event) => setRuleTarget(event.target.value)}
+                        className="field min-w-0"
+                    />
+                    <datalist id="price-rule-values">
+                        {allValues.map((value) => <option key={value} value={value} />)}
+                    </datalist>
+                    <input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        placeholder="+2.00"
+                        aria-label="Price change"
+                        value={ruleModifier}
+                        onChange={(event) => setRuleModifier(event.target.value)}
+                        className="field tabular-nums"
+                    />
+                    <button type="submit" aria-label="Add price adjustment" className="btn btn-secondary btn-icon min-h-11 w-11" disabled={!ruleTarget.trim() || !ruleModifier}>
+                        <Plus />
+                    </button>
+                </form>
             </div>
         </div>
     );

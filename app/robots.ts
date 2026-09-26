@@ -1,12 +1,15 @@
 import type { MetadataRoute } from 'next';
+import { absoluteUrl } from '../lib/site';
 
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: {
-      userAgent: '*',
-      allow: '/',
-    },
-    sitemap: 'https://variantflow.app/sitemap.xml',
-    host: 'https://variantflow.app',
+    rules: [
+      {
+        userAgent: '*',
+        allow: '/',
+        disallow: ['/api/', '/workspace', '/auth'],
+      },
+    ],
+    sitemap: absoluteUrl('/sitemap.xml'),
   };
 }

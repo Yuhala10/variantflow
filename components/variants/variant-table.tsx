@@ -1,101 +1,167 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo, useState } from 'react';
+import { AlertCircle, Grid3x3, RotateCcw } from 'lucide-react';
 import { useProductStore } from '../../store/productStore';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
-import { Input } from '../ui/input';
-import { AlertCircle } from 'lucide-react';
 import { validateProductData } from '../../domain/validation/validateProduct';
+import { InternalVariant } from '../../types';
+import { cn } from '../../lib/utils';
+
+const PAGE_SIZE = 100;
+
+type Field = 'sku' | 'price';
+
+interface CellProps {
+    variant: InternalVariant;
+    field: Field;
+    hasError: boolean;
+    onChange: (variantId: string, field: Field, value: string | number) => void;
+    onReset: (variantId: string, field: Field) => void;
+    compact?: boolean;
+}
+
+function VariantField({ variant, field, hasError, onChange, onReset, compact }: CellProps) {
+    const overridden = field === 'sku' ? variant.isSkuOverridden : variant.isPriceOverridden;
+    const label = field === 'sku' ? 'SKU' : 'Price';
+
+    return (
+        <div className="relative flex items-center">
+            {field === 'price' && <span className="pointer-events-none absolute left-2.5 text-xs text-ink-3">$</span>}
+            <input
+                type={field === 'sku' ? 'text' : 'number'}
+                inputMode={field === 'price' ? 'decimal' : undefined}
+                step={field === 'price' ? '0.01' : undefined}
+                value={field === 'sku' ? variant.sku : variant.price}
+                spellCheck={false}
+                aria-label={`${label} for ${Object.values(variant.attributes).join(' / ')}`}
+                aria-invalid={hasError || undefined}
+                onChange={(event) => onChange(variant.id, field, field === 'sku' ? event.target.value : parseFloat(event.target.value) || 0)}
+                className={cn(
+                    'field field-sm tabular-nums',
+                    field === 'sku' ? 'font-mono uppercase' : 'pl-6',
+                    overridden && 'pr-8',
+                    compact && 'min-h-10',
+                    hasError && '!border-danger/60 !bg-danger-soft/40',
+                    overridden && !hasError && '!border-gold/50 !bg-gold-soft/50',
+                )}
+            />
+            {overridden && (
+                <button
+                    type="button"
+                    onClick={() => onReset(variant.id, field)}
+                    title={`Reset ${label.toLowerCase()} to the rule-based value`}
+                    aria-label={`Reset ${label.toLowerCase()}`}
+                    className="absolute right-1 inline-flex h-7 w-7 items-center justify-center rounded-md text-gold transition-colors hover:bg-gold-soft"
+                >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                </button>
+            )}
+        </div>
+    );
+}
 
 export const VariantTable: React.FC = () => {
-    const { productTitle, options, variants, updateRowOverride } = useProductStore();
+    const { productTitle, options, variants, updateRowOverride, clearRowOverride } = useProductStore();
+    const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-    const activeValidationErrors = validateProductData({ productTitle, options, variants });
+    const errorsByRow = useMemo(() => {
+        const map = new Map<string, Set<string>>();
+        validateProductData({ productTitle, options, variants }).forEach((error) => {
+            if (!error.rowId) return;
+            if (!map.has(error.rowId)) map.set(error.rowId, new Set());
+            map.get(error.rowId)!.add(error.field);
+        });
+        return map;
+    }, [productTitle, options, variants]);
 
     if (variants.length === 0) {
         return (
-            <div className="h-64 rounded-xl border border-dashed border-slate-200 bg-white flex flex-col items-center justify-center text-center p-6">
-                <p className="text-xs font-medium text-slate-400 italic">
-                    No variant combinations compiled yet. Add option categories to compute matrix grid.
-                </p>
+            <div className="card flex min-h-80 flex-col items-center justify-center p-8 text-center">
+                <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-soft text-brand-ink">
+                    <Grid3x3 className="h-6 w-6" />
+                </span>
+                <h3 className="mt-4 text-base font-semibold text-ink">No variants yet</h3>
+                <p className="mt-1 max-w-xs text-sm text-ink-2">Add an option with at least one value and every combination will appear here.</p>
             </div>
         );
     }
 
-    const visibleHeaders = options.filter(opt => opt.name.trim() !== '' && opt.values.length > 0).map(o => o.name);
+    const headers = options.filter((option) => option.name.trim() !== '' && option.values.some((value) => value.trim())).map((option) => option.name.trim());
+    const visible = variants.slice(0, visibleCount);
+    const remaining = variants.length - visible.length;
 
     return (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden flex flex-col h-full">
-            <div className="overflow-x-auto">
-                <Table className="w-full text-left border-collapse min-w-max">
-                    <TableHeader className="bg-slate-50 border-b border-slate-200">
-                        <TableRow className="hover:bg-transparent">
-                            <TableHead className="w-12 text-xxs font-bold uppercase tracking-wider text-slate-400 py-3.5 px-4">#</TableHead>
-                            {visibleHeaders.map((header) => (
-                                <TableHead key={header} className="text-xxs font-bold uppercase tracking-wider text-slate-500 py-3.5 px-4">
-                                    {header}
-                                </TableHead>
+        <div className="card overflow-hidden">
+            {/* Desktop / tablet table */}
+            <div className="scroll-thin hidden max-h-[calc(100dvh-17rem)] overflow-auto md:block">
+                <table className="w-full min-w-max border-separate border-spacing-0 text-left text-sm">
+                    <thead className="sticky top-0 z-10 bg-surface/95 backdrop-blur">
+                        <tr className="text-xs font-semibold text-ink-3">
+                            <th scope="col" className="w-12 border-b border-line px-4 py-3 font-semibold">#</th>
+                            {headers.map((header) => (
+                                <th key={header} scope="col" className="border-b border-line px-3 py-3 font-semibold">{header}</th>
                             ))}
-                            <TableHead className="w-56 text-xxs font-bold uppercase tracking-wider text-slate-500 py-3.5 px-4">Variant SKU</TableHead>
-                            <TableHead className="w-36 text-xxs font-bold uppercase tracking-wider text-slate-500 py-3.5 px-4">Price (\$)</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
-                        {variants.map((row, index) => {
-                            const rowHasErrors = activeValidationErrors.some(err => err.rowId === row.id);
-
+                            <th scope="col" className="w-64 border-b border-line px-3 py-3 font-semibold">SKU</th>
+                            <th scope="col" className="w-36 border-b border-line px-3 py-3 pr-4 font-semibold">Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {visible.map((row, index) => {
+                            const rowErrors = errorsByRow.get(row.id);
                             return (
-                                <TableRow
-                                    key={row.id}
-                                    className={`transition-colors ${rowHasErrors ? 'bg-rose-50/30 hover:bg-rose-50/50' : 'hover:bg-slate-50/50'}`}
-                                >
-                                    <TableCell className="py-3 px-4 text-[10px] font-mono text-slate-400">{index + 1}</TableCell>
-
-                                    {visibleHeaders.map((header) => (
-                                        <TableCell key={header} className="py-3 px-4 font-semibold text-slate-900">
-                                            {row.attributes[header] || '-'}
-                                        </TableCell>
+                                <tr key={row.id} className={cn('group transition-colors', rowErrors ? 'bg-danger-soft/30' : 'hover:bg-canvas/70')}>
+                                    <td className="border-b border-line px-4 py-2 font-mono text-xs text-ink-3">
+                                        {rowErrors ? <AlertCircle className="h-4 w-4 text-danger" aria-label="Row has issues" /> : index + 1}
+                                    </td>
+                                    {headers.map((header) => (
+                                        <td key={header} className="border-b border-line px-3 py-2 font-medium text-ink">{row.attributes[header] || '—'}</td>
                                     ))}
-
-                                    <TableCell className="py-2 px-3 relative">
-                                        <div className="flex items-center gap-1.5 w-full">
-                                            <Input
-                                                type="text"
-                                                value={row.sku}
-                                                onChange={(e) => updateRowOverride(row.id, 'sku', e.target.value)}
-                                                className={`h-8 font-mono text-xxs uppercase shadow-none rounded-md px-2 focus-visible:ring-1 focus-visible:ring-slate-900 transition-all ${row.isSkuOverridden
-                                                        ? 'bg-amber-50/40 border-amber-300 text-amber-900 font-semibold'
-                                                        : 'bg-slate-50/60 border-slate-200 text-slate-700'
-                                                    }`}
-                                            />
-                                            {rowHasErrors && activeValidationErrors.some(e => e.rowId === row.id && e.field === 'sku') && (
-                                                <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                                            )}
-                                        </div>
-                                    </TableCell>
-
-                                    <TableCell className="py-2 px-3">
-                                        <div className="flex items-center gap-1.5 w-full">
-                                            <Input
-                                                type="number"
-                                                step="0.01"
-                                                value={row.price}
-                                                onChange={(e) => updateRowOverride(row.id, 'price', parseFloat(e.target.value) || 0)}
-                                                className={`h-8 text-xxs shadow-none rounded-md px-2 focus-visible:ring-1 focus-visible:ring-slate-900 transition-all ${row.isPriceOverridden
-                                                        ? 'bg-amber-50/40 border-amber-300 text-amber-900 font-semibold'
-                                                        : 'bg-slate-50/60 border-slate-200 text-slate-700'
-                                                    }`}
-                                            />
-                                            {rowHasErrors && activeValidationErrors.some(e => e.rowId === row.id && e.field === 'price') && (
-                                                <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                                            )}
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
+                                    <td className="border-b border-line px-3 py-2">
+                                        <VariantField variant={row} field="sku" hasError={!!rowErrors?.has('sku')} onChange={updateRowOverride} onReset={clearRowOverride} />
+                                    </td>
+                                    <td className="border-b border-line px-3 py-2 pr-4">
+                                        <VariantField variant={row} field="price" hasError={!!rowErrors?.has('price')} onChange={updateRowOverride} onReset={clearRowOverride} />
+                                    </td>
+                                </tr>
                             );
                         })}
-                    </TableBody>
-                </Table>
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Mobile cards */}
+            <ul className="divide-y divide-line md:hidden">
+                {visible.map((row, index) => {
+                    const rowErrors = errorsByRow.get(row.id);
+                    return (
+                        <li key={row.id} className={cn('p-4', rowErrors && 'bg-danger-soft/30')}>
+                            <div className="mb-2.5 flex items-center justify-between gap-3">
+                                <p className="min-w-0 truncate text-[15px] font-semibold text-ink">
+                                    {headers.map((header) => row.attributes[header]).filter(Boolean).join(' / ')}
+                                </p>
+                                <span className="shrink-0 font-mono text-xs text-ink-3">
+                                    {rowErrors ? <AlertCircle className="h-4 w-4 text-danger" aria-label="Row has issues" /> : `#${index + 1}`}
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-[1fr_7.5rem] gap-2">
+                                <VariantField compact variant={row} field="sku" hasError={!!rowErrors?.has('sku')} onChange={updateRowOverride} onReset={clearRowOverride} />
+                                <VariantField compact variant={row} field="price" hasError={!!rowErrors?.has('price')} onChange={updateRowOverride} onReset={clearRowOverride} />
+                            </div>
+                        </li>
+                    );
+                })}
+            </ul>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-surface-2/40 px-4 py-3 text-xs text-ink-3">
+                <span>
+                    Showing {visible.length.toLocaleString()} of {variants.length.toLocaleString()} variants
+                    <span className="hidden sm:inline"> · <span className="text-gold">Gold</span> fields were edited by hand</span>
+                </span>
+                {remaining > 0 && (
+                    <button type="button" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)} className="btn btn-secondary btn-sm">
+                        Show {Math.min(PAGE_SIZE, remaining)} more
+                    </button>
+                )}
             </div>
         </div>
     );

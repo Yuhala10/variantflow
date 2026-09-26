@@ -24,7 +24,7 @@ export function convertCatalogToShopifyCsv(catalog: CatalogExportInput): string 
     const handle = catalog.productTitle
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
-        .replace(/(^-|-\$)/g, '') || 'product-handle';
+        .replace(/(^-|-$)/g, '') || 'product-handle';
 
     const optionGroups = catalog.options.filter(opt => opt.name.trim() !== '' && opt.values.length > 0);
 

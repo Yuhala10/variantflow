@@ -1,95 +1,146 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useProductStore } from '../../store/productStore';
 import { OptionsBuilder } from '../../components/product/options-builder';
 import { RulesPanel } from '../../components/product/rules-panel';
 import { CatalogToolsPanel } from '../../components/product/catalog-tools-panel';
 import { VariantTable } from '../../components/variants/variant-table';
-import { WorkspaceLayout } from '../../components/layout-shell-wrapper';
+import { WorkspaceHeader, SaveState } from '../../components/workspace/workspace-header';
+import { ValidationSummary } from '../../components/workspace/validation-summary';
+import { MobileTabs, WorkspaceTab } from '../../components/workspace/mobile-tabs';
+import { UpgradeDialog } from '../../components/workspace/upgrade-dialog';
+import { Notice, useNotice } from '../../components/workspace/notice';
+import { LogoMark } from '../../components/brand/logo';
 import { validateProductData } from '../../domain/validation/validateProduct';
 import { convertToShopifyCsv } from '../../exporters/shopify/csvAdapter';
-import { createSupabaseBrowserClient } from '../../lib/supabase/client';
 import { isSupabaseConfigured } from '../../lib/supabase/config';
-import { AlertTriangle, CheckCircle } from 'lucide-react';
+import { isWithinLimit } from '../../lib/entitlements';
+import { AccountAccess } from '../../types';
+import { cn } from '../../lib/utils';
 
 function WorkspaceLoading() {
     return (
-        <main className="min-h-screen bg-[#174d3d] flex items-center justify-center px-6 text-white">
-            <div className="flex flex-col items-center gap-5 text-center">
-                <div className="flex h-20 w-20 items-center justify-center rounded-[1.75rem] bg-[#f4eadb] text-2xl font-black tracking-tight text-[#174d3d] shadow-[0_20px_50px_rgba(0,0,0,0.18)] animate-pulse">VF</div>
+        <main className="flex min-h-dvh items-center justify-center bg-canvas px-6">
+            <div className="animate-fade flex flex-col items-center gap-5 text-center">
+                <LogoMark className="h-14 w-14 rounded-2xl shadow-lg" />
                 <div>
-                    <p className="text-lg font-black tracking-tight">Opening your workspace</p>
-                    <p className="mt-1 text-xs font-medium text-[#c9e3d7]">Preparing your product compiler...</p>
+                    <p className="text-base font-semibold text-ink">Opening your workspace</p>
+                    <p className="mt-1 text-sm text-ink-3">Loading your catalog…</p>
                 </div>
-                <div className="h-1.5 w-32 overflow-hidden rounded-full bg-[#2d6755]">
-                    <div className="h-full w-1/2 animate-[loading_1.2s_ease-in-out_infinite] rounded-full bg-[#f4eadb]" />
+                <div className="h-1 w-32 overflow-hidden rounded-full bg-surface-3">
+                    <div className="animate-shimmer h-full w-1/2 rounded-full bg-brand" />
                 </div>
             </div>
         </main>
     );
 }
 
+function Panel({ step, title, description, children, className }: { step: number; title: string; description: string; children: React.ReactNode; className?: string }) {
+    return (
+        <section aria-labelledby={`panel-${step}`} className={cn('card p-5 sm:p-6', className)}>
+            <header className="mb-5 flex items-start gap-3">
+                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand text-xs font-semibold text-on-brand">{step}</span>
+                <div>
+                    <h2 id={`panel-${step}`} className="text-base font-semibold leading-7 text-ink">{title}</h2>
+                    <p className="text-sm text-ink-3">{description}</p>
+                </div>
+            </header>
+            {children}
+        </section>
+    );
+}
+
+const downloadCsv = (blob: Blob, title: string) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `variantflow_${title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'export'}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+};
+
 export default function WorkspacePage() {
     const store = useProductStore();
-    const [mounted, setMounted] = useState(false);
-    const [cloudProjectId, setCloudProjectId] = useState<string | null>(null);
+    const [ready, setReady] = useState(false);
+    const [email, setEmail] = useState<string | null>(null);
     const [cloudReady, setCloudReady] = useState(false);
+    const [saveState, setSaveState] = useState<SaveState>('idle');
+    const [tab, setTab] = useState<WorkspaceTab>('build');
+    const [upgradeOpen, setUpgradeOpen] = useState(false);
+    const [exporting, setExporting] = useState(false);
+    const { notice, show, dismiss } = useNotice();
+    const projectIdRef = useRef<string | null>(null);
+    const lastSavedRef = useRef('');
+
+    const loadAccess = useCallback(async (): Promise<AccountAccess | null> => {
+        const response = await fetch('/api/account', { cache: 'no-store' });
+        if (!response.ok) return null;
+        const account = await response.json();
+        if (account.access) useProductStore.getState().setAccess(account.access);
+        setEmail(account.user?.email ?? null);
+        return account.access ?? null;
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
 
         const prepareWorkspace = async () => {
-            store.recompileCatalogMatrix();
+            const { recompileCatalogMatrix, hydrateCatalog, getCatalogSnapshot } = useProductStore.getState();
+            recompileCatalogMatrix();
 
-            if (isSupabaseConfigured() && createSupabaseBrowserClient()) {
-                const [accountResponse, projectsResponse] = await Promise.all([
-                    fetch('/api/account'),
-                    fetch('/api/projects'),
+            if (isSupabaseConfigured()) {
+                const [, projectsResponse] = await Promise.all([
+                    loadAccess().catch(() => null),
+                    fetch('/api/projects', { cache: 'no-store' }).catch(() => null),
                 ]);
 
-                if (accountResponse.ok) {
-                    const account = await accountResponse.json();
-                    if (account.access) store.setAccess(account.access);
-                }
-
-                if (projectsResponse.ok) {
-                    const projectsPayload = await projectsResponse.json();
-                    const project = projectsPayload.projects?.[0];
+                if (projectsResponse?.ok) {
+                    const project = (await projectsResponse.json()).projects?.[0];
                     if (project?.catalog) {
-                        store.hydrateCatalog(project.catalog);
-                        setCloudProjectId(project.id);
+                        hydrateCatalog(project.catalog);
+                        projectIdRef.current = project.id;
                     }
                 }
+                lastSavedRef.current = JSON.stringify(getCatalogSnapshot());
                 if (!cancelled) setCloudReady(true);
             }
 
-            const timer = window.setTimeout(() => {
-                if (!cancelled) setMounted(true);
-            }, 650);
-            return () => window.clearTimeout(timer);
+            if (!cancelled) setReady(true);
         };
 
         void prepareWorkspace();
         return () => { cancelled = true; };
-    }, []);
+    }, [loadAccess]);
 
     useEffect(() => {
         if (!cloudReady) return;
 
         let saveTimer: number | undefined;
         const unsubscribe = useProductStore.subscribe((state) => {
+            const snapshot = state.getCatalogSnapshot();
+            const serialized = JSON.stringify(snapshot);
+            if (serialized === lastSavedRef.current) return;
+
             window.clearTimeout(saveTimer);
+            setSaveState('saving');
             saveTimer = window.setTimeout(async () => {
-                const body = { name: state.productTitle || 'Untitled catalog', catalog: state.getCatalogSnapshot() };
-                const response = await fetch('/api/projects', {
-                    method: cloudProjectId ? 'PUT' : 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(cloudProjectId ? { id: cloudProjectId, ...body } : body),
-                });
-                if (!cloudProjectId && response.ok) {
-                    const payload = await response.json();
-                    setCloudProjectId(payload.project?.id ?? null);
+                const body = { name: snapshot.productTitle || 'Untitled catalog', catalog: snapshot };
+                const projectId = projectIdRef.current;
+                try {
+                    const response = await fetch('/api/projects', {
+                        method: projectId ? 'PUT' : 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(projectId ? { id: projectId, ...body } : body),
+                    });
+                    if (!response.ok) throw new Error();
+                    if (!projectId) projectIdRef.current = (await response.json()).project?.id ?? null;
+                    lastSavedRef.current = serialized;
+                    setSaveState('saved');
+                } catch {
+                    setSaveState('error');
                 }
             }, 700);
         });
@@ -98,27 +149,32 @@ export default function WorkspacePage() {
             window.clearTimeout(saveTimer);
             unsubscribe();
         };
-    }, [cloudReady, cloudProjectId]);
+    }, [cloudReady]);
 
-    if (!mounted) return <WorkspaceLoading />;
+    if (!ready) return <WorkspaceLoading />;
 
-    const catalogFlags = validateProductData({
-        productTitle: store.productTitle,
-        options: store.options,
-        variants: store.variants
-    });
-    const totalIssueCount = catalogFlags.length;
-    const isPassingValidation = totalIssueCount === 0;
-    const isEmptyWorkspace = !store.productTitle.trim() && store.options.length === 0;
+    const { access } = store;
+    const issues = validateProductData({ productTitle: store.productTitle, options: store.options, variants: store.variants });
+    const isEmpty = !store.productTitle.trim() && store.options.length === 0;
+    const variantLimit = access.entitlements.maxVariantsPerProject;
+    const withinLimit = isWithinLimit(variantLimit, store.variants.length);
+    const canUpgrade = !access.role && access.tier === 'FREE';
 
-    const handleTriggerExport = async () => {
-        if (!isPassingValidation) {
-            alert('Cannot export file. Please resolve all active validation flags inside your workspace first.');
+    const handleExport = async () => {
+        if (isEmpty || issues.length > 0) {
+            setTab('variants');
+            show('error', isEmpty ? 'Add a product title and options before exporting.' : 'Fix the highlighted issues before exporting.');
             return;
         }
 
-        const supabase = createSupabaseBrowserClient();
-        if (supabase) {
+        if (!isSupabaseConfigured()) {
+            downloadCsv(new Blob([convertToShopifyCsv()], { type: 'text/csv;charset=utf-8;' }), store.productTitle);
+            show('success', 'Your Shopify CSV has been downloaded.');
+            return;
+        }
+
+        setExporting(true);
+        try {
             const response = await fetch('/api/export/shopify', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -134,65 +190,74 @@ export default function WorkspacePage() {
 
             if (!response.ok) {
                 const error = await response.json().catch(() => null);
-                alert(error?.error || 'The secure export could not be completed.');
+                show('error', error?.error || 'The export could not be completed. Please try again.');
+                if (response.status === 403 && canUpgrade) setUpgradeOpen(true);
                 return;
             }
 
-            const secureCsv = await response.blob();
-            const secureDownloadUrl = URL.createObjectURL(secureCsv);
-            const secureAnchor = document.createElement('a');
-            secureAnchor.href = secureDownloadUrl;
-            secureAnchor.download = `variantflow_export_${store.productTitle.toLowerCase().replace(/\s+/g, '_')}.csv`;
-            document.body.appendChild(secureAnchor);
-            secureAnchor.click();
-            document.body.removeChild(secureAnchor);
-            URL.revokeObjectURL(secureDownloadUrl);
-            return;
+            downloadCsv(await response.blob(), store.productTitle);
+            show('success', `Exported ${store.variants.length} variants to a Shopify CSV.`);
+        } catch {
+            show('error', 'You appear to be offline. Check your connection and try again.');
+        } finally {
+            setExporting(false);
         }
-
-        const outputCsvBuffer = convertToShopifyCsv();
-        const dataBlob = new Blob([outputCsvBuffer], { type: 'text/csv;charset=utf-8;' });
-        const dynamicDownloadUrl = URL.createObjectURL(dataBlob);
-        const operationalAnchorLink = document.createElement('a');
-        operationalAnchorLink.href = dynamicDownloadUrl;
-        operationalAnchorLink.download = `variantflow_export_${store.productTitle.toLowerCase().replace(/\s+/g, '_')}.csv`;
-        document.body.appendChild(operationalAnchorLink);
-        operationalAnchorLink.click();
-        document.body.removeChild(operationalAnchorLink);
-        URL.revokeObjectURL(dynamicDownloadUrl);
     };
 
-    return (
-        <WorkspaceLayout
-            access={store.access}
-            variantCount={store.variants.length}
-            onUpgradeSuccess={async () => {
-                const response = await fetch('/api/account');
-                if (response.ok) store.setAccess((await response.json()).access);
-            }}
-            onTriggerExport={handleTriggerExport}
-        >
-            <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-3">
-                <div className="space-y-6 lg:col-span-1">
-                    <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-                        <div className="mb-4 flex items-center gap-2"><span className="flex h-5 w-5 items-center justify-center rounded-md bg-slate-950 text-[10px] font-bold text-white">1</span><h2 className="text-sm font-bold uppercase tracking-wider text-slate-900">Product Core Configuration</h2></div>
-                        <OptionsBuilder />
-                    </div>
-                    <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-                        <div className="mb-4 flex items-center gap-2"><span className="flex h-5 w-5 items-center justify-center rounded-md bg-slate-950 text-[10px] font-bold text-white">2</span><h2 className="text-sm font-bold uppercase tracking-wider text-slate-900">Automation & Pricing Rules</h2></div>
-                        <RulesPanel />
-                    </div>
-                    <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm"><CatalogToolsPanel /></div>
-                </div>
+    const refreshAccess = async () => {
+        const next = await loadAccess().catch(() => null);
+        const upgraded = !!next && (next.role !== null || next.tier !== 'FREE');
+        if (upgraded) show('success', 'Your plan is active. Enjoy the upgrade!');
+        return upgraded;
+    };
 
-                <div className="flex h-full flex-col space-y-6 lg:col-span-2">
-                    <div className={`flex items-start gap-3 rounded-xl border p-4 transition-colors ${isPassingValidation ? 'border-emerald-200 bg-emerald-50/50 text-emerald-900' : 'border-amber-200 bg-amber-50/60 text-amber-900'}`}>
-                        {isPassingValidation ? <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /> : <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />}
-                        <div className="space-y-1"><h4 className="text-xs font-bold uppercase tracking-wider">{isPassingValidation ? 'Matrix Compiled Successfully' : isEmptyWorkspace ? 'Start your catalog' : `Validation needs attention (${totalIssueCount})`}</h4>{isPassingValidation ? <p className="text-xxs leading-normal opacity-80">All variant options look structured and correct. Your catalog is ready to export.</p> : isEmptyWorkspace ? <p className="text-xxs leading-normal opacity-80">Add a product title and option categories on the left to generate your first variants.</p> : <ul className="list-inside list-disc space-y-0.5 text-xxs font-medium leading-relaxed">{catalogFlags.slice(0, 2).map((error) => <li key={error.id}>{error.message}</li>)}{totalIssueCount > 2 && <li className="font-bold text-amber-700">...and {totalIssueCount - 2} more validation errors.</li>}</ul>}</div>
+    const panelVisibility = (id: WorkspaceTab) => (tab === id ? 'block' : 'hidden lg:block');
+
+    return (
+        <div className="min-h-dvh bg-canvas">
+            <WorkspaceHeader
+                title={store.productTitle}
+                email={email}
+                access={access}
+                saveState={saveState}
+                exporting={exporting}
+                exportBlocked={!withinLimit}
+                onExport={handleExport}
+                onUpgrade={() => setUpgradeOpen(true)}
+            />
+
+            <main id="main" className="mx-auto max-w-[1600px] px-4 pb-[calc(env(safe-area-inset-bottom)+6.5rem)] pt-5 sm:px-6 lg:pb-12 lg:pt-8">
+                <h1 className="sr-only">VariantFlow workspace</h1>
+                <div className="grid items-start gap-6 lg:grid-cols-[minmax(22rem,26rem)_1fr] xl:gap-8">
+                    <div className="space-y-6 lg:sticky lg:top-24 lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto lg:pb-2 scroll-thin">
+                        <Panel step={1} title="Product" description="Name it and list its options." className={panelVisibility('build')}>
+                            <OptionsBuilder />
+                        </Panel>
+                        <Panel step={2} title="Rules" description="SKUs and pricing, applied to every variant." className={panelVisibility('rules')}>
+                            <RulesPanel />
+                        </Panel>
+                        <Panel step={3} title="Tools" description="Import supplier data and send feedback." className={panelVisibility('tools')}>
+                            <CatalogToolsPanel onUpgrade={() => setUpgradeOpen(true)} />
+                        </Panel>
                     </div>
-                    <div className="flex-1"><VariantTable /></div>
+
+                    <div className={cn('min-w-0 space-y-5', panelVisibility('variants'))}>
+                        <ValidationSummary
+                            issues={issues}
+                            isEmpty={isEmpty}
+                            variantCount={store.variants.length}
+                            variantLimit={variantLimit}
+                            canUpgrade={canUpgrade}
+                            onUpgrade={() => setUpgradeOpen(true)}
+                        />
+                        <VariantTable />
+                    </div>
                 </div>
-            </div>
-        </WorkspaceLayout>
+            </main>
+
+            <MobileTabs active={tab} onChange={setTab} variantCount={store.variants.length} issueCount={issues.length} />
+            <UpgradeDialog open={upgradeOpen} onOpenChange={setUpgradeOpen} onRefreshAccess={refreshAccess} onError={(message) => show('error', message)} />
+            <Notice notice={notice} onDismiss={dismiss} />
+        </div>
     );
 }

@@ -1,118 +1,133 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Plus, Trash2 } from 'lucide-react';
 import { useProductStore } from '../../store/productStore';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Card } from '../ui/card';
-import { Trash2, Plus, Layers } from 'lucide-react';
+import { OptionValuesInput } from './option-values-input';
+
+const PRESETS: Array<{ name: string; values: string[] }> = [
+    { name: 'Size', values: ['S', 'M', 'L', 'XL'] },
+    { name: 'Color', values: ['Black', 'White'] },
+    { name: 'Material', values: ['Cotton', 'Polyester'] },
+];
+
+// Shopify supports up to three options per product.
+const MAX_OPTIONS = 3;
 
 export const OptionsBuilder: React.FC = () => {
-    const {
-        productTitle,
-        setProductTitle,
-        options,
-        addOptionGroup,
-        updateOptionGroup,
-        removeOptionGroup,
-    } = useProductStore();
+    const { productTitle, setProductTitle, options, addOptionGroup, updateOptionGroup, removeOptionGroup } = useProductStore();
+    const [newGroupName, setNewGroupName] = useState('');
+    const [lastAddedId, setLastAddedId] = useState<string | null>(null);
 
-    const [newGroupInput, setNewGroupInput] = useState('');
+    const atLimit = options.length >= MAX_OPTIONS;
+    const existingNames = new Set(options.map((option) => option.name.trim().toLowerCase()));
+    const availablePresets = PRESETS.filter((preset) => !existingNames.has(preset.name.toLowerCase()));
 
-    const handleAddGroup = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newGroupInput.trim()) return;
-        addOptionGroup(newGroupInput.trim());
-        setNewGroupInput('');
+    const addGroup = (name: string, values: string[] = []) => {
+        addOptionGroup(name, values);
+        const created = useProductStore.getState().options.at(-1);
+        setLastAddedId(values.length ? null : created?.id ?? null);
+    };
+
+    const handleAddGroup = (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!newGroupName.trim() || atLimit) return;
+        addGroup(newGroupName.trim());
+        setNewGroupName('');
     };
 
     return (
         <div className="space-y-6">
-            <div className="space-y-2">
-                <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Product Base Title
-                </label>
-                <Input
+            <div>
+                <label htmlFor="product-title" className="label">Product title</label>
+                <input
+                    id="product-title"
                     type="text"
                     value={productTitle}
-                    onChange={(e) => setProductTitle(e.target.value)}
-                    placeholder="e.g., Premium Heavyweight T-Shirt"
-                    className="h-11 border-slate-200 focus-visible:ring-1 focus-visible:ring-slate-900 bg-white shadow-none text-sm font-medium"
+                    onChange={(event) => setProductTitle(event.target.value)}
+                    placeholder="e.g. Heavyweight Cotton T-Shirt"
+                    className="field"
+                    autoComplete="off"
                 />
             </div>
 
-            <div className="pt-4 border-t border-slate-100 space-y-4">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <Layers className="w-4 h-4 text-slate-500" />
-                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                            Product Option Matrix Categories
-                        </h3>
-                    </div>
+            <div>
+                <div className="mb-3 flex items-baseline justify-between gap-3">
+                    <h3 className="text-[13px] font-semibold text-ink">Options</h3>
+                    <span className="text-xs text-ink-3">{options.length} of {MAX_OPTIONS}</span>
                 </div>
 
-                <div className="space-y-3">
+                {options.length === 0 && (
+                    <p className="mb-3 rounded-xl border border-dashed border-line-strong bg-surface-2/50 px-4 py-5 text-center text-sm text-ink-3">
+                        Add options like size or color to generate variants.
+                    </p>
+                )}
+
+                <ul className="space-y-3">
                     {options.map((group) => (
-                        <Card
-                            key={group.id}
-                            className="p-4 border-slate-200/80 shadow-none rounded-xl bg-white flex flex-col gap-3 relative group"
-                        >
-                            <div className="flex items-center justify-between gap-4">
-                                <Input
+                        <li key={group.id} className="animate-rise rounded-xl border border-line bg-canvas/60 p-3">
+                            <div className="mb-2 flex items-center gap-2">
+                                <input
                                     type="text"
                                     value={group.name}
-                                    onChange={(e) =>
-                                        updateOptionGroup(group.id, e.target.value, group.values)
-                                    }
-                                    className="h-8 w-1/2 border-transparent hover:border-slate-200 focus:border-slate-300 focus:bg-slate-50 px-2 -ml-2 rounded text-sm font-semibold text-slate-800 shadow-none outline-none transition-colors"
-                                    placeholder="Option Name (e.g. Size)"
+                                    onChange={(event) => updateOptionGroup(group.id, event.target.value, group.values)}
+                                    placeholder="Option name"
+                                    aria-label="Option name"
+                                    className="min-h-9 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 text-sm font-semibold text-ink outline-none transition-colors hover:border-line focus:border-brand focus:bg-surface"
                                 />
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
+                                <button
+                                    type="button"
                                     onClick={() => removeOptionGroup(group.id)}
-                                    className="w-8 h-8 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                    aria-label={`Remove ${group.name || 'option'}`}
+                                    className="btn btn-ghost btn-icon btn-sm text-ink-3 hover:!bg-danger-soft hover:!text-danger"
                                 >
-                                    <Trash2 className="w-4 h-4" />
-                                </Button>
+                                    <Trash2 />
+                                </button>
                             </div>
-
-                            <div className="space-y-1">
-                                <Input
-                                    type="text"
-                                    value={group.values.join(', ')}
-                                    onChange={(e) => {
-                                        const parsedValues = e.target.value
-                                            .split(',')
-                                            .map((v) => v.trim());
-                                        updateOptionGroup(group.id, group.name, parsedValues);
-                                    }}
-                                    className="h-9 border-slate-100 bg-slate-50/50 focus-visible:ring-1 focus-visible:ring-slate-400 text-xs font-medium text-slate-600 shadow-none"
-                                    placeholder="Enter values separated by commas (e.g. S, M, L, XL)"
-                                />
-                                <span className="text-[10px] text-slate-400 block px-1">
-                                    Separate each variant metric using a standard comma character.
-                                </span>
-                            </div>
-                        </Card>
+                            <OptionValuesInput
+                                id={`values-${group.id}`}
+                                optionName={group.name}
+                                values={group.values}
+                                autoFocus={group.id === lastAddedId}
+                                onChange={(values) => updateOptionGroup(group.id, group.name, values)}
+                            />
+                        </li>
                     ))}
-                </div>
+                </ul>
 
-                <form onSubmit={handleAddGroup} className="flex items-center gap-2 pt-2">
-                    <Input
-                        type="text"
-                        value={newGroupInput}
-                        onChange={(e) => setNewGroupInput(e.target.value)}
-                        placeholder="Add new category (e.g., Material)"
-                        className="h-10 border-slate-200 shadow-none text-xs bg-white focus-visible:ring-1 focus-visible:ring-slate-900"
-                    />
-                    <Button
-                        type="submit"
-                        className="h-10 px-4 bg-slate-950 text-white hover:bg-slate-800 transition-colors text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow-sm"
-                    >
-                        <Plus className="w-3.5 h-3.5" /> Add
-                    </Button>
-                </form>
+                {!atLimit && (
+                    <>
+                        <form onSubmit={handleAddGroup} className="mt-3 flex gap-2">
+                            <input
+                                type="text"
+                                value={newGroupName}
+                                onChange={(event) => setNewGroupName(event.target.value)}
+                                placeholder="New option, e.g. Style"
+                                aria-label="New option name"
+                                className="field"
+                            />
+                            <button type="submit" className="btn btn-secondary shrink-0" disabled={!newGroupName.trim()}>
+                                <Plus /> Add
+                            </button>
+                        </form>
+                        {availablePresets.length > 0 && (
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <span className="text-xs text-ink-3">Quick add:</span>
+                                {availablePresets.map((preset) => (
+                                    <button
+                                        key={preset.name}
+                                        type="button"
+                                        onClick={() => addGroup(preset.name, preset.values)}
+                                        className="chip border border-line bg-surface text-ink-2 transition-colors hover:border-brand/40 hover:text-brand-ink"
+                                    >
+                                        <Plus className="h-3 w-3" /> {preset.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </>
+                )}
+                {atLimit && <p className="hint">Shopify supports up to three options per product.</p>}
             </div>
         </div>
     );

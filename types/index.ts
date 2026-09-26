@@ -86,46 +86,46 @@ export interface ValidationError {
 export const BILLING_PLANS: Record<SubscriptionTier, PricingPlan> = {
     FREE: {
         id: 'FREE',
-        name: 'Free Starter',
+        name: 'Free',
         priceUsdt: 0,
         rowRunLimit: 50,
-        description: 'Perfect for exploring the variant compilation loop.',
+        description: 'Everything you need to build and export your first catalogs.',
         features: [
-            { text: '1 Active Catalog Project', included: true },
-            { text: 'Generate Variant Matrices (Up to 50)', included: true },
-            { text: 'Core SKU & Pricing Rules Engine', included: true },
-            { text: 'Basic Real-time Data Validation', included: true },
-            { text: 'Shopify CSV File Exporting (up to 50 variants)', included: true },
-            { text: 'Advanced Catalog Cleanup Pipelines', included: false }
-        ]
+            { text: '1 saved catalog project', included: true },
+            { text: 'Up to 50 variants per export', included: true },
+            { text: 'SKU templates and pricing rules', included: true },
+            { text: 'Real-time catalog validation', included: true },
+            { text: 'Shopify CSV export', included: true },
+            { text: 'CSV import and cleanup tools', included: false },
+        ],
     },
     PRO: {
         id: 'PRO',
-        name: 'Professional Merchant',
+        name: 'Pro',
         priceUsdt: 19,
         rowRunLimit: 2000,
-        description: 'For growing brands expanding their active storefront catalogs.',
+        description: 'For growing brands managing larger and more frequent catalogs.',
         features: [
-            { text: 'Unlimited Active Matrix Projects', included: true },
-            { text: 'Unlimited Variant Generation rows', included: true },
-            { text: 'Full Shopify CSV Export Access', included: true },
-            { text: 'Advanced Structural Validation Logs', included: true },
-            { text: '2,000 Verified Row-Runs per Month', included: true },
-            { text: 'CSV Import, Auto-Mapping & Column Cleanup', included: true }
-        ]
+            { text: 'Everything in Free', included: true },
+            { text: 'Unlimited projects and variants', included: true },
+            { text: 'CSV import with automatic column mapping', included: true },
+            { text: 'Supplier data cleanup', included: true },
+            { text: 'Advanced validation', included: true },
+            { text: '2,000 row-runs per month', included: true },
+        ],
     },
     SCALE: {
         id: 'SCALE',
-        name: 'Scale Pipeline Operator',
+        name: 'Scale',
         priceUsdt: 49,
         rowRunLimit: 15000,
-        description: 'Built for high-volume dropshippers and multi-store operations.',
+        description: 'For high-volume dropshippers and multi-store operations.',
         features: [
-            { text: 'Everything included in the PRO package', included: true },
-            { text: '15,000 Verified Row-Runs per Month', included: true },
-            { text: 'Supplier Catalog Normalization Engine', included: true },
-            { text: 'Smart assisted column schema mapping', included: true },
-            { text: 'Multi-Platform Engine Exporters', included: true }
-        ]
-    }
+            { text: 'Everything in Pro', included: true },
+            { text: '15,000 row-runs per month', included: true },
+            { text: 'Supplier catalog normalization', included: true },
+            { text: 'Smart assisted column mapping', included: true },
+            { text: 'Multi-platform exporters', included: true },
+        ],
+    },
 };

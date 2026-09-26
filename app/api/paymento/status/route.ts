@@ -28,6 +28,6 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ status: 'UNAVAILABLE', error: 'Payment activation is not connected to Paymento yet.' }, { status: 503 });
 }
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   return NextResponse.json({ error: 'Payment confirmation is only accepted from the verified payment webhook.' }, { status: 405 });
 }

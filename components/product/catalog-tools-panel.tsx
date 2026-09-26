@@ -1,11 +1,9 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import Papa from 'papaparse';
+import { ArrowRight, Lock, MessageCircle, Send, Sparkles, Wand2 } from 'lucide-react';
 import { useProductStore } from '../../store/productStore';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { UploadCloud, Sparkles, ArrowRight, MessageSquareText, Send, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
 const CANONICAL_HEADER_MAP: Record<string, string[]> = {
   title: ['title', 'product', 'product name', 'product_title', 'name'],
@@ -44,7 +42,7 @@ const inferColumnMapping = (headers: string[]) => {
   return mapping;
 };
 
-export const CatalogToolsPanel: React.FC = () => {
+export const CatalogToolsPanel: React.FC<{ onUpgrade: () => void }> = ({ onUpgrade }) => {
   const store = useProductStore();
   const [csvText, setCsvText] = useState('');
   const [mappingPreview, setMappingPreview] = useState<Record<string, string>>({});
@@ -52,16 +50,9 @@ export const CatalogToolsPanel: React.FC = () => {
   const [feedbackName, setFeedbackName] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState('');
 
-  const { tier, role, entitlements } = store.access;
+  const { entitlements } = store.access;
   const canUseAdvancedImport = entitlements.canImportCsv;
   const canNormalizeSuppliers = entitlements.canNormalizeSuppliers;
-
-  const planLabel = useMemo(() => {
-    if (role) return role === 'owner' ? 'Owner' : 'Admin';
-    if (tier === 'SCALE') return 'Scale';
-    if (tier === 'PRO') return 'Pro';
-    return 'Free';
-  }, [tier, role]);
 
   const handleImportCsv = () => {
     if (!csvText.trim()) return;
@@ -106,7 +97,8 @@ export const CatalogToolsPanel: React.FC = () => {
     setPreviewRows(normalized);
   };
 
-  const sendFeedbackToWhatsApp = () => {
+  const sendFeedbackToWhatsApp = (event: React.FormEvent) => {
+    event.preventDefault();
     const trimmedMessage = feedbackMessage.trim();
     if (!trimmedMessage) return;
 
@@ -116,124 +108,103 @@ export const CatalogToolsPanel: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5">
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center gap-2 mb-3">
-          <UploadCloud className="w-4 h-4 text-slate-600" />
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600">Catalog Import & Mapping</h3>
+    <div className="space-y-8">
+      <div>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="text-[13px] font-semibold text-ink">Import a supplier CSV</h3>
+          {!canUseAdvancedImport && <span className="chip bg-gold-soft text-gold"><Lock className="h-3 w-3" /> Pro</span>}
         </div>
 
         {!canUseAdvancedImport ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800 leading-relaxed">
-            Upgrade to PRO or SCALE to unlock CSV import, automatic column mapping, and cleanup tools.
+          <div className="rounded-xl border border-line bg-canvas/60 p-5">
+            <p className="text-sm leading-relaxed text-ink-2">
+              Paste a supplier spreadsheet and VariantFlow maps the columns and cleans messy values automatically.
+            </p>
+            <button type="button" onClick={onUpgrade} className="btn btn-soft btn-sm mt-4">
+              <Sparkles /> Unlock with Pro
+            </button>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             <textarea
               value={csvText}
               onChange={(e) => setCsvText(e.target.value)}
-              rows={7}
-              placeholder="Paste supplier CSV data here...\nTitle,SKU,Price,Color,Size\nPremium Tee,TSH-001,20,Black,S"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              rows={6}
+              aria-label="Supplier CSV data"
+              spellCheck={false}
+              placeholder={'Title,SKU,Price,Color,Size\nPremium Tee,TSH-001,20,Black,S'}
+              className="field scroll-thin resize-y font-mono text-[13px] leading-relaxed"
             />
 
             <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                onClick={handleImportCsv}
-                className="h-9 bg-slate-950 text-white hover:bg-slate-800 text-[10px] font-bold uppercase tracking-wider rounded-lg"
-              >
-                <Sparkles className="w-3.5 h-3.5" /> Auto-map columns
-              </Button>
-
+              <button type="button" onClick={handleImportCsv} disabled={!csvText.trim()} className="btn btn-primary btn-sm">
+                <Sparkles /> Auto-map columns
+              </button>
               {canNormalizeSuppliers && (
-                <Button
-                  type="button"
-                  onClick={handleNormalizeSuppliers}
-                  variant="outline"
-                  className="h-9 border-slate-200 text-slate-700 hover:bg-slate-50 text-[10px] font-bold uppercase tracking-wider rounded-lg"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" /> Normalize suppliers
-                </Button>
+                <button type="button" onClick={handleNormalizeSuppliers} disabled={!previewRows.length} className="btn btn-secondary btn-sm">
+                  <Wand2 /> Clean values
+                </button>
               )}
             </div>
 
             {Object.keys(mappingPreview).length > 0 && (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Detected mapping</div>
-                <div className="space-y-2 text-[11px] text-slate-700">
+              <div className="animate-rise rounded-xl border border-line bg-canvas/60 p-3">
+                <p className="mb-2 px-1 text-xs font-semibold text-ink-3">Detected columns</p>
+                <ul className="space-y-1.5">
                   {Object.entries(mappingPreview).map(([header, match]) => (
-                    <div key={header} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-2 py-1.5">
-                      <span className="font-medium">{header}</span>
-                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
-                        {match}
-                        <ArrowRight className="w-3 h-3 text-slate-400" />
+                    <li key={header} className="flex items-center justify-between gap-3 rounded-lg bg-surface px-3 py-2 text-sm">
+                      <span className="truncate font-medium text-ink">{header}</span>
+                      <span className="inline-flex items-center gap-1.5 text-ink-3">
+                        <ArrowRight className="h-3.5 w-3.5" />
+                        <span className={`chip ${match === 'custom' ? 'bg-surface-2 text-ink-3' : 'bg-brand-soft text-brand-ink'}`}>{match}</span>
                       </span>
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
 
             {previewRows.length > 0 && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-emerald-700">Preview</div>
-                <div className="space-y-1.5 text-[11px] text-emerald-900">
+              <div className="animate-rise rounded-xl border border-line bg-canvas/60 p-3">
+                <p className="mb-2 px-1 text-xs font-semibold text-ink-3">Preview</p>
+                <ul className="space-y-1.5 text-sm text-ink-2">
                   {previewRows.map((row, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                      <span>{Object.values(row).slice(0, 4).join(' • ')}</span>
-                    </div>
+                    <li key={index} className="truncate rounded-lg bg-surface px-3 py-2">{Object.values(row).slice(0, 4).join(' · ')}</li>
                   ))}
-                </div>
+                </ul>
               </div>
             )}
           </div>
         )}
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="flex items-center gap-2 mb-3">
-          <MessageSquareText className="w-4 h-4 text-slate-600" />
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-600">Complaints & Suggestions</h3>
-        </div>
-
-        <div className="space-y-3">
-          <Input
+      <form onSubmit={sendFeedbackToWhatsApp} className="border-t border-line pt-7">
+        <h3 className="flex items-center gap-2 text-[13px] font-semibold text-ink">
+          <MessageCircle className="h-4 w-4 text-ink-3" /> Feedback & support
+        </h3>
+        <p className="mb-3 mt-1 text-xs text-ink-3">Found a bug or have an idea? Message us directly on WhatsApp.</p>
+        <div className="space-y-2.5">
+          <input
             value={feedbackName}
             onChange={(e) => setFeedbackName(e.target.value)}
             placeholder="Your name (optional)"
-            className="h-10 border-slate-200 text-xs"
+            aria-label="Your name"
+            autoComplete="name"
+            className="field"
           />
-
           <textarea
             value={feedbackMessage}
             onChange={(e) => setFeedbackMessage(e.target.value)}
-            rows={5}
-            placeholder="Tell us about a bug, improvement idea, or anything you want fixed..."
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+            rows={3}
+            aria-label="Message"
+            placeholder="What can we improve?"
+            className="field resize-y"
           />
-
-          <Button
-            type="button"
-            onClick={sendFeedbackToWhatsApp}
-            className="h-10 w-full bg-[#25D366] text-white hover:bg-[#1fb75a] text-[10px] font-bold uppercase tracking-wider rounded-xl"
-          >
-            <Send className="w-3.5 h-3.5" /> Send to WhatsApp
-          </Button>
-
+          <button type="submit" disabled={!feedbackMessage.trim()} className="btn btn-secondary w-full">
+            <Send /> Send on WhatsApp
+          </button>
         </div>
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-[#f7f1ea] p-4 shadow-sm">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Current plan status</div>
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-white border border-slate-200 px-3 py-2">
-          <span className="text-xs font-bold text-slate-700">{planLabel} plan</span>
-          <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-            {role ? 'All features unlocked' : tier === 'SCALE' ? 'Smart mapping + normalization active' : canUseAdvancedImport ? 'CSV tools + cleanup active' : 'Upgrade available'}
-          </span>
-        </div>
-      </div>
+      </form>
     </div>
   );
 };

@@ -24,13 +24,14 @@ interface ProductCatalogState {
 
     setProductTitle: (title: string) => void;
     setBasePrice: (price: number) => void;
-    addOptionGroup: (name: string) => void;
+    addOptionGroup: (name: string, values?: string[]) => void;
     updateOptionGroup: (id: string, name: string, values: string[]) => void;
     removeOptionGroup: (id: string) => void;
     setSkuTemplate: (pattern: string) => void;
     addPriceRule: (targetValue: string, modifier: number) => void;
     removePriceRule: (id: string) => void;
     updateRowOverride: (variantId: string, field: 'sku' | 'price', value: string | number) => void;
+    clearRowOverride: (variantId: string, field: 'sku' | 'price') => void;
     recompileCatalogMatrix: () => void;
     setAccess: (access: AccountAccess) => void;
     getCatalogSnapshot: () => CatalogSnapshot;
@@ -59,9 +60,9 @@ export const useProductStore = create<ProductCatalogState>((set, get) => ({
     setProductTitle: (title) => set({ productTitle: title }),
     setBasePrice: (price) => { set({ basePrice: price }); get().recompileCatalogMatrix(); },
 
-    addOptionGroup: (name) => {
+    addOptionGroup: (name, values = []) => {
         set((state) => ({
-            options: [...state.options, { id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(), name, values: ['New Value'] }]
+            options: [...state.options, { id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(), name, values }]
         }));
         get().recompileCatalogMatrix();
     },
@@ -97,6 +98,18 @@ export const useProductStore = create<ProductCatalogState>((set, get) => ({
                 [variantId]: { ...state.overrides[variantId], [field]: value }
             }
         }));
+        get().recompileCatalogMatrix();
+    },
+
+    clearRowOverride: (variantId, field) => {
+        set((state) => {
+            const rest = { ...state.overrides[variantId] };
+            delete rest[field];
+            const overrides = { ...state.overrides };
+            if (Object.keys(rest).length) overrides[variantId] = rest;
+            else delete overrides[variantId];
+            return { overrides };
+        });
         get().recompileCatalogMatrix();
     },
 
