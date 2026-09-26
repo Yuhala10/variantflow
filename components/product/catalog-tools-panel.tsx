@@ -52,14 +52,16 @@ export const CatalogToolsPanel: React.FC = () => {
   const [feedbackName, setFeedbackName] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState('');
 
-  const canUseAdvancedImport = store.subscriptionTier === 'PRO' || store.subscriptionTier === 'SCALE';
-  const canNormalizeSuppliers = canUseAdvancedImport;
+  const { tier, role, entitlements } = store.access;
+  const canUseAdvancedImport = entitlements.canImportCsv;
+  const canNormalizeSuppliers = entitlements.canNormalizeSuppliers;
 
   const planLabel = useMemo(() => {
-    if (store.subscriptionTier === 'SCALE') return 'Scale';
-    if (store.subscriptionTier === 'PRO') return 'Pro';
+    if (role) return role === 'owner' ? 'Owner' : 'Admin';
+    if (tier === 'SCALE') return 'Scale';
+    if (tier === 'PRO') return 'Pro';
     return 'Free';
-  }, [store.subscriptionTier]);
+  }, [tier, role]);
 
   const handleImportCsv = () => {
     if (!csvText.trim()) return;
@@ -228,7 +230,7 @@ export const CatalogToolsPanel: React.FC = () => {
         <div className="flex items-center justify-between gap-3 rounded-xl bg-white border border-slate-200 px-3 py-2">
           <span className="text-xs font-bold text-slate-700">{planLabel} plan</span>
           <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-            {store.subscriptionTier === 'SCALE' ? 'Smart mapping + normalization active' : canUseAdvancedImport ? 'CSV tools + cleanup active' : 'Upgrade available'}
+            {role ? 'All features unlocked' : tier === 'SCALE' ? 'Smart mapping + normalization active' : canUseAdvancedImport ? 'CSV tools + cleanup active' : 'Upgrade available'}
           </span>
         </div>
       </div>

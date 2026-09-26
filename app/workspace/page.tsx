@@ -50,10 +50,7 @@ export default function WorkspacePage() {
 
                 if (accountResponse.ok) {
                     const account = await accountResponse.json();
-                    const tier = account.subscription?.tier;
-                    if (tier === 'PRO' || tier === 'SCALE') {
-                        store.setSubscriptionState(tier, 0, tier === 'PRO' ? 2000 : 15000);
-                    }
+                    if (account.access) store.setAccess(account.access);
                 }
 
                 if (projectsResponse.ok) {
@@ -167,9 +164,12 @@ export default function WorkspacePage() {
 
     return (
         <WorkspaceLayout
-            billingState={{ currentTier: store.subscriptionTier, rowRunsUsed: store.rowRunsUsed, rowRunsMax: store.rowRunsMax, activeInvoice: null }}
+            access={store.access}
             variantCount={store.variants.length}
-            onUpgradeSuccess={(tier) => store.setSubscriptionState(tier, 0, tier === 'PRO' ? 2000 : 15000)}
+            onUpgradeSuccess={async () => {
+                const response = await fetch('/api/account');
+                if (response.ok) store.setAccess((await response.json()).access);
+            }}
             onTriggerExport={handleTriggerExport}
         >
             <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-3">

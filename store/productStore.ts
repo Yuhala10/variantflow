@@ -1,33 +1,19 @@
 import { create } from 'zustand';
-import { OptionGroup, InternalVariant, PriceModifierRule, SkuTemplateConfig, SubscriptionTier } from '../types';
+import { AccountAccess, OptionGroup, InternalVariant, PriceModifierRule, SkuTemplateConfig } from '../types';
+import { FREE_ACCESS } from '../lib/entitlements';
 import { generateCartesianMatrix, generateVariantId } from '../domain/variant/generateVariants';
 import { computeSkuFromTemplate } from '../domain/sku/generateSku';
 import { computeVariantPrice } from '../domain/pricing/calculatePrice';
 
-const SUBSCRIPTION_STORAGE_KEY = 'variantflow.subscription.v1';
+// Plans used to be cached here and trusted on load; access now always comes from /api/account.
+const LEGACY_SUBSCRIPTION_STORAGE_KEY = 'variantflow.subscription.v1';
 
-const readStoredSubscription = () => {
-    if (typeof window === 'undefined') return null;
-
-    try {
-        const raw = window.localStorage.getItem(SUBSCRIPTION_STORAGE_KEY);
-        return raw ? JSON.parse(raw) : null;
-    } catch {
-        return null;
-    }
-};
-
-const persistSubscription = (subscriptionTier: SubscriptionTier, rowRunsUsed: number, rowRunsMax: number) => {
-    if (typeof window === 'undefined') return;
-
-    const payload = { subscriptionTier, rowRunsUsed, rowRunsMax };
-    window.localStorage.setItem(SUBSCRIPTION_STORAGE_KEY, JSON.stringify(payload));
-};
+if (typeof window !== 'undefined') {
+    try { window.localStorage.removeItem(LEGACY_SUBSCRIPTION_STORAGE_KEY); } catch { /* storage unavailable */ }
+}
 
 interface ProductCatalogState {
-    subscriptionTier: SubscriptionTier;
-    rowRunsUsed: number;
-    rowRunsMax: number;
+    access: AccountAccess;
     productTitle: string;
     options: OptionGroup[];
     skuConfig: SkuTemplateConfig;
@@ -46,7 +32,7 @@ interface ProductCatalogState {
     removePriceRule: (id: string) => void;
     updateRowOverride: (variantId: string, field: 'sku' | 'price', value: string | number) => void;
     recompileCatalogMatrix: () => void;
-    setSubscriptionState: (tier: SubscriptionTier, used: number, max: number) => void;
+    setAccess: (access: AccountAccess) => void;
     getCatalogSnapshot: () => CatalogSnapshot;
     hydrateCatalog: (catalog: Partial<CatalogSnapshot>) => void;
 }
@@ -60,12 +46,8 @@ export interface CatalogSnapshot {
     overrides: Record<string, { sku?: string; price?: number }>;
 }
 
-const storedSubscription = readStoredSubscription();
-
 export const useProductStore = create<ProductCatalogState>((set, get) => ({
-    subscriptionTier: storedSubscription?.subscriptionTier ?? 'FREE',
-    rowRunsUsed: storedSubscription?.rowRunsUsed ?? 0,
-    rowRunsMax: storedSubscription?.rowRunsMax ?? 50,
+    access: FREE_ACCESS,
     productTitle: '',
     options: [],
     skuConfig: { pattern: '' },
@@ -118,10 +100,7 @@ export const useProductStore = create<ProductCatalogState>((set, get) => ({
         get().recompileCatalogMatrix();
     },
 
-    setSubscriptionState: (tier, used, max) => {
-        set({ subscriptionTier: tier, rowRunsUsed: used, rowRunsMax: max });
-        persistSubscription(tier, used, max);
-    },
+    setAccess: (access) => set({ access }),
 
     getCatalogSnapshot: () => {
         const { productTitle, options, skuConfig, basePrice, priceRules, overrides } = get();

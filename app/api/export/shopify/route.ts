@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '../../../../lib/supabase/server';
 import { convertCatalogToShopifyCsv, CatalogExportInput } from '../../../../exporters/shopify/csvAdapter';
 import { validateProductData } from '../../../../domain/validation/validateProduct';
-import { SubscriptionTier } from '../../../../types';
-
-const isSubscriptionTier = (value: unknown): value is SubscriptionTier => value === 'FREE' || value === 'PRO' || value === 'SCALE';
+import { getAccountAccess } from '../../../../lib/entitlements.server';
+import { isWithinLimit } from '../../../../lib/entitlements';
 
 export async function POST(request: NextRequest) {
     const supabase = await createSupabaseServerClient();
@@ -28,19 +27,22 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'The catalog payload is incomplete.' }, { status: 400 });
     }
 
-    const { data: subscription } = await supabase
-        .from('subscriptions')
-        .select('tier, status')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-    const tier = isSubscriptionTier(subscription?.tier) ? subscription.tier : 'FREE';
-    if (subscription?.status && subscription.status !== 'active') {
-        return NextResponse.json({ error: 'Your subscription is not active.' }, { status: 403 });
+    let access;
+    try {
+        access = await getAccountAccess(supabase, user);
+    } catch {
+        return NextResponse.json({ error: 'Unable to confirm your plan. Please try again.' }, { status: 500 });
     }
 
-    if (tier === 'FREE' && catalog.variants.length > 50) {
-        return NextResponse.json({ error: 'Free exports are limited to 50 variants. Upgrade to export larger catalogs.' }, { status: 403 });
+    const { entitlements } = access;
+    if (!entitlements.canExportCsv) {
+        return NextResponse.json({ error: 'Your plan does not include CSV export.' }, { status: 403 });
+    }
+
+    if (!isWithinLimit(entitlements.maxVariantsPerProject, catalog.variants.length)) {
+        return NextResponse.json({
+            error: `Your plan exports up to ${entitlements.maxVariantsPerProject} variants. Upgrade to export larger catalogs.`,
+        }, { status: 403 });
     }
 
     const validationErrors = validateProductData({

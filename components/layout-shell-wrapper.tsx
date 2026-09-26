@@ -2,22 +2,22 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { SubscriptionTier, MerchantBillingState, BILLING_PLANS } from '../types';
+import { SubscriptionTier, AccountAccess, BILLING_PLANS } from '../types';
 import { Button } from './ui/button';
 import { AccountControl } from './auth/account-control';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from './ui/dialog';
 import { ShieldCheck, Cpu, Zap, CheckCircle2, RefreshCw, Copy, Wallet, ArrowRight, Shield, House } from 'lucide-react';
 
 interface WorkspaceLayoutProps {
-    billingState: MerchantBillingState & { activeInvoice: any };
+    access: AccountAccess;
     variantCount: number;
     children: React.ReactNode;
-    onUpgradeSuccess: (tier: SubscriptionTier) => void;
+    onUpgradeSuccess: () => void | Promise<void>;
     onTriggerExport: () => void | Promise<void>;
 }
 
 export const WorkspaceLayout: React.FC<WorkspaceLayoutProps> = ({
-    billingState,
+    access,
     variantCount,
     children,
     onUpgradeSuccess,
@@ -29,16 +29,10 @@ export const WorkspaceLayout: React.FC<WorkspaceLayoutProps> = ({
     const [loading, setLoading] = useState(false);
     const [copySuccess, setCopySuccess] = useState(false);
 
-    const setSubscriptionState = (tier: SubscriptionTier, used: number, max: number) => {
-        if (typeof window !== 'undefined') {
-            const payload = { subscriptionTier: tier, rowRunsUsed: used, rowRunsMax: max };
-            window.localStorage.setItem('variantflow.subscription.v1', JSON.stringify(payload));
-        }
-    };
-
-    const activeTier = billingState.currentTier;
-    const isFree = activeTier === 'FREE';
-    const overVariantLimit = isFree && variantCount > 50;
+    const activeTier = access.role ? access.role.toUpperCase() : access.tier;
+    const variantLimit = access.entitlements.maxVariantsPerProject;
+    const isFree = !access.role && access.tier === 'FREE';
+    const overVariantLimit = variantLimit !== null && variantCount > variantLimit;
 
     useEffect(() => {
         let pollingInterval: NodeJS.Timeout;
@@ -53,7 +47,7 @@ export const WorkspaceLayout: React.FC<WorkspaceLayoutProps> = ({
                         clearInterval(pollingInterval);
                         setInvoice(null);
                         setIsBillingOpen(false);
-                        onUpgradeSuccess(selectedTier);
+                        void onUpgradeSuccess();
                     } else if (data.status === 'EXPIRED') {
                         clearInterval(pollingInterval);
                         setInvoice(null);
@@ -146,9 +140,7 @@ export const WorkspaceLayout: React.FC<WorkspaceLayoutProps> = ({
                             </div>
                         ) : (
                             <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#5f5246]">
-                                <span>{billingState.rowRunsUsed}</span>
-                                <span className="text-[#7a695d]">/ {billingState.rowRunsMax}</span>
-                                <span className="text-[#7a695d]">Row-Runs</span>
+                                <span className="text-[#7a695d]">{access.role ? 'All features unlocked' : `${access.entitlements.monthlyRowRuns ?? 'Unlimited'} row-runs / mo`}</span>
                             </div>
                         )}
                     </div>

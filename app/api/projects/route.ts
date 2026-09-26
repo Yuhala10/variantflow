@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '../../../lib/supabase/server';
+import { getAccountAccess } from '../../../lib/entitlements.server';
 
 const getUserAndClient = async () => {
     const supabase = await createSupabaseServerClient();
@@ -32,6 +33,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => null);
     if (!body?.catalog || typeof body.catalog !== 'object') {
         return NextResponse.json({ error: 'A catalog payload is required.' }, { status: 400 });
+    }
+
+    const { entitlements } = await getAccountAccess(supabase, user).catch(() => ({ entitlements: null }));
+    if (!entitlements) return NextResponse.json({ error: 'Unable to confirm your plan.' }, { status: 500 });
+    if (entitlements.maxProjects !== null) {
+        const { count } = await supabase.from('projects').select('id', { count: 'exact', head: true }).eq('user_id', user.id);
+        if ((count ?? 0) >= entitlements.maxProjects) {
+            return NextResponse.json({ error: `Your plan includes ${entitlements.maxProjects} project. Upgrade for unlimited projects.` }, { status: 403 });
+        }
     }
 
     const { data, error } = await supabase

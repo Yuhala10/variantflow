@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '../../../../lib/supabase/admin';
+import { BILLING_PLANS } from '../../../../types';
+
+const SUBSCRIPTION_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
 
 type PaymentoVerifyResponse = {
     success?: boolean;
@@ -79,34 +82,71 @@ export async function POST(request: Request) {
 
     const payment = verified.body;
     const status = String(payment?.orderStatus ?? '').toLowerCase();
-    const approved = verified.success === true || status === '8' || status === 'approve' || status === 'approved';
+    // `success` only means the verify call worked; the order itself must be approved.
+    const approved = verified.success === true && (status === '8' || status === 'approve' || status === 'approved');
     if (!approved) {
         return NextResponse.json({ received: true, verified: false, orderStatus: payment?.orderStatus ?? null });
     }
 
-    const email = getValue(input, ['email', 'customerEmail', 'customer_email'])
-        || additionalValue(payment, ['email', 'customeremail', 'customer_email']);
-    const tier = (getValue(input, ['plan', 'tier']) || additionalValue(payment, ['plan', 'tier', 'variantflow_plan']))?.toUpperCase();
-    if (!email || (tier !== 'PRO' && tier !== 'SCALE')) {
-        return NextResponse.json({ error: 'Approved payment is missing the customer email or VariantFlow plan.' }, { status: 422 });
+    const invoiceId = payment?.orderId || token;
+    const [byInvoice, byToken] = await Promise.all([
+        admin.from('payment_events').select('id').eq('invoice_id', invoiceId).maybeSingle(),
+        admin.from('payment_events').select('id').eq('payment_token', token).maybeSingle(),
+    ]);
+    const existing = byInvoice.data || byToken.data;
+    if (existing) return NextResponse.json({ received: true, verified: true, alreadyProcessed: true });
+
+    // The plan and amount must come from Paymento's verified response, never from the unauthenticated request body.
+    const paidAmount = Number(payment?.settlement?.expectedCryptoAmount ?? NaN);
+    if (!Number.isFinite(paidAmount)) {
+        return NextResponse.json({ error: 'Verified payment is missing the paid amount.' }, { status: 422 });
+    }
+    const covers = (plan: 'PRO' | 'SCALE') => paidAmount + 0.01 >= BILLING_PLANS[plan].priceUsdt;
+    const namedTier = additionalValue(payment, ['plan', 'tier', 'variantflow_plan'])?.toUpperCase();
+    const tier = namedTier === 'PRO' || namedTier === 'SCALE'
+        ? namedTier
+        : covers('SCALE') ? 'SCALE' : covers('PRO') ? 'PRO' : null;
+    if (!tier || !covers(tier)) {
+        return NextResponse.json({ error: 'Verified payment amount does not cover a VariantFlow plan.' }, { status: 422 });
+    }
+
+    // Each token is applied once (checked above), so the email only chooses which account receives a paid plan.
+    const email = (additionalValue(payment, ['email', 'customeremail', 'customer_email'])
+        || getValue(input, ['email', 'customerEmail', 'customer_email']))?.toLowerCase();
+    if (!email) {
+        return NextResponse.json({ error: 'Approved payment is missing the customer email.' }, { status: 422 });
     }
 
     const { data: profile } = await admin.from('profiles').select('id').eq('email', email).maybeSingle();
     if (!profile) return NextResponse.json({ error: 'No VariantFlow account matches the payment email.' }, { status: 404 });
 
+    const { data: current } = await admin.from('subscriptions').select('current_period_end').eq('user_id', profile.id).maybeSingle();
+    const now = Date.now();
+    const currentEnd = current?.current_period_end ? new Date(current.current_period_end).getTime() : 0;
+    const periodEnd = new Date(Math.max(now, currentEnd) + SUBSCRIPTION_PERIOD_MS).toISOString();
+
     const transactionHash = payment?.settlement?.transactions?.find((transaction) => transaction.txHash)?.txHash || null;
-    await admin.from('subscriptions').update({ tier, status: 'active', updated_at: new Date().toISOString() }).eq('user_id', profile.id);
-    await admin.from('payment_events').upsert({
+    const { error: eventError } = await admin.from('payment_events').insert({
         user_id: profile.id,
-        invoice_id: payment?.orderId || token,
+        invoice_id: invoiceId,
+        payment_token: token,
         tier,
-        amount_usdt: payment?.settlement?.expectedCryptoAmount || 0,
+        amount_usdt: paidAmount,
         transaction_hash: transactionHash,
         status: 'confirmed',
         payload: verified,
-        confirmed_at: new Date().toISOString(),
-    }, { onConflict: 'invoice_id' });
+        confirmed_at: new Date(now).toISOString(),
+    });
+    // Unique constraints on invoice_id and payment_token make a concurrent duplicate fail here.
+    if (eventError) return NextResponse.json({ error: 'Payment could not be recorded.' }, { status: 409 });
+
+    await admin.from('subscriptions').upsert({
+        user_id: profile.id,
+        tier,
+        status: 'active',
+        current_period_end: periodEnd,
+        updated_at: new Date(now).toISOString(),
+    }, { onConflict: 'user_id' });
 
     return NextResponse.json({ received: true, verified: true, tier });
 }
-

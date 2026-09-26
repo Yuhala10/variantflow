@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '../../../lib/supabase/server';
+import { getAccountAccess } from '../../../lib/entitlements.server';
 
 export async function GET() {
     const supabase = await createSupabaseServerClient();
@@ -8,16 +9,13 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Sign in before loading your account.' }, { status: 401 });
 
-    const { data: subscription, error } = await supabase
-        .from('subscriptions')
-        .select('tier, status, current_period_end')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-    if (error) return NextResponse.json({ error: 'Unable to load account entitlements.' }, { status: 500 });
-
-    return NextResponse.json({
-        user: { id: user.id, email: user.email },
-        subscription: subscription ?? { tier: 'FREE', status: 'active', current_period_end: null },
-    });
+    try {
+        const access = await getAccountAccess(supabase, user);
+        return NextResponse.json(
+            { user: { id: user.id, email: user.email }, access },
+            { headers: { 'Cache-Control': 'private, no-store' } },
+        );
+    } catch {
+        return NextResponse.json({ error: 'Unable to load account entitlements.' }, { status: 500 });
+    }
 }

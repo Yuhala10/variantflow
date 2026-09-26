@@ -27,9 +27,21 @@ export interface EntitlementSet {
     canUseAiMapping: boolean;
     canTransformCatalog: boolean;
     canUseMultiPlatformExport: boolean;
-    maxProjects: number;
-    maxVariantsPerProject: number;
-    monthlyRowRuns: number;
+    /** null means unlimited. */
+    maxProjects: number | null;
+    maxVariantsPerProject: number | null;
+    monthlyRowRuns: number | null;
+}
+
+export type AccessRole = 'owner' | 'admin';
+
+/** Resolved on the server and sent to the browser; the browser only displays it. */
+export interface AccountAccess {
+    tier: SubscriptionTier;
+    role: AccessRole | null;
+    subscriptionActive: boolean;
+    currentPeriodEnd: string | null;
+    entitlements: EntitlementSet;
 }
 
 export interface OptionGroup {
@@ -69,13 +81,6 @@ export interface ValidationError {
     field: 'title' | 'option-name' | 'option-value' | 'sku' | 'price' | 'structure';
     severity: ValidationErrorSeverity;
     message: string;
-}
-
-export interface MerchantBillingState {
-    currentTier: SubscriptionTier;
-    rowRunsUsed: number;
-    rowRunsMax: number;
-    activeInvoice: any;
 }
 
 export const BILLING_PLANS: Record<SubscriptionTier, PricingPlan> = {
