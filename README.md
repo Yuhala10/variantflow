@@ -22,7 +22,7 @@ Open http://localhost:3000 (English) or http://localhost:3000/fr (French).
 | `SUPABASE_SERVICE_ROLE_KEY` | Server only: payment webhook and row-run metering |
 | `PAYMENTO_SECRET_KEY` | Server only: verifies payment tokens with Paymento |
 | `NEXT_PUBLIC_PAYMENTO_PRO_LINK`, `NEXT_PUBLIC_PAYMENTO_SCALE_LINK` | Hosted checkout links |
-| `NEXT_PUBLIC_SITE_URL` | Canonical domain (defaults to `https://variantflow.app`) |
+| `NEXT_PUBLIC_SITE_URL` | Canonical domain (defaults to `https://variantflow-omega.vercel.app`) |
 | `NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION`, `NEXT_PUBLIC_BING_SITE_VERIFICATION` | Optional Search Console verification |
 
 ## Database

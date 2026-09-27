@@ -20,7 +20,7 @@ export function AccountMenu({ email, access, onUpgrade }: { email: string | null
     useDismiss(ref, open, close);
 
     if (!email) {
-        return <Link href={`${href('/auth')}?next=${encodeURIComponent(href('/workspace'))}`} className="btn btn-secondary btn-sm"><UserRound /> {t.common.signIn}</Link>;
+        return <Link href={`${href('/auth')}?next=${encodeURIComponent(href('/workspace'))}`} aria-label={t.common.signIn} className="btn btn-secondary btn-sm px-2.5 sm:px-3"><UserRound /> <span className="hidden sm:inline">{t.common.signIn}</span></Link>;
     }
 
     const signOut = async () => {

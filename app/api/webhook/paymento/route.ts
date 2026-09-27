@@ -126,17 +126,21 @@ export async function POST(request: Request) {
     const periodEnd = new Date(Math.max(now, currentEnd) + SUBSCRIPTION_PERIOD_MS).toISOString();
 
     const transactionHash = payment?.settlement?.transactions?.find((transaction) => transaction.txHash)?.txHash || null;
-    const { error: eventError } = await admin.from('payment_events').insert({
+    const paymentEvent = {
         user_id: profile.id,
         invoice_id: invoiceId,
-        payment_token: token,
         tier,
         amount_usdt: paidAmount,
         transaction_hash: transactionHash,
         status: 'confirmed',
         payload: verified,
         confirmed_at: new Date(now).toISOString(),
-    });
+    };
+    let { error: eventError } = await admin.from('payment_events').insert({ ...paymentEvent, payment_token: token });
+    // Until migration 002 adds payment_token, record the payment without it (invoice_id stays unique).
+    if (eventError && /payment_token/.test(eventError.message)) {
+        ({ error: eventError } = await admin.from('payment_events').insert(paymentEvent));
+    }
     // Unique constraints on invoice_id and payment_token make a concurrent duplicate fail here.
     if (eventError) return NextResponse.json({ error: 'Payment could not be recorded.' }, { status: 409 });
 

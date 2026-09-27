@@ -51,7 +51,7 @@ export function ValidationSummary(props: ValidationSummaryProps) {
             <dl className="grid grid-cols-3 gap-3">
                 {stats.map((stat) => (
                     <div key={stat.label} className="card min-w-0 px-4 py-3.5">
-                        <dt className="truncate text-xs text-ink-3">{stat.label}</dt>
+                        <dt className="text-xs leading-tight text-ink-3">{stat.label}</dt>
                         <dd className={cn('mt-1 truncate text-xl font-semibold tabular-nums tracking-tight text-ink', stat.tone)}>{stat.value}</dd>
                     </div>
                 ))}

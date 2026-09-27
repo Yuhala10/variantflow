@@ -401,7 +401,7 @@ export const en = {
             adjustments: 'Price adjustments',
             adjustmentsHint: 'Add or subtract an amount when a variant has a specific value.',
             when: 'When',
-            valuePlaceholder: 'Value, e.g. XL',
+            valuePlaceholder: 'e.g. XL',
             valueLabel: 'Option value',
             changeLabel: 'Price change',
             addAdjustment: 'Add price adjustment',

@@ -1,6 +1,7 @@
 import { ImageResponse } from 'next/og';
 import { OgMark } from '../../../lib/og-mark';
 import { getDictionary, isLocale, locales } from '../../../lib/i18n';
+import { siteHost } from '../../../lib/site';
 
 export const dynamic = 'force-static';
 export const dynamicParams = false;
@@ -29,7 +30,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ loc
                         <span style={{ fontSize: 60, fontWeight: 700, color: '#1a1916', lineHeight: 1.05, letterSpacing: -2 }}>{t.meta.ogHeadline}</span>
                         <span style={{ fontSize: 26, color: '#57524a', lineHeight: 1.4 }}>{t.meta.ogSubline}</span>
                     </div>
-                    <span style={{ fontSize: 22, color: '#1f5b4a', fontWeight: 600 }}>variantflow.app</span>
+                    <span style={{ fontSize: 22, color: '#1f5b4a', fontWeight: 600 }}>{siteHost}</span>
                 </div>
                 <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'flex-end' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', width: 500, background: '#ffffff', borderRadius: 24, border: '1px solid #e6dfd2', boxShadow: '0 30px 60px -20px rgba(60,45,20,0.25)', overflow: 'hidden' }}>

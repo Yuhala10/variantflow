@@ -411,7 +411,7 @@ export const fr: Dictionary = {
             adjustments: 'Ajustements de prix',
             adjustmentsHint: 'Ajoutez ou retirez un montant lorsqu’une variante a une valeur précise.',
             when: 'Si',
-            valuePlaceholder: 'Valeur, ex. XL',
+            valuePlaceholder: 'ex. XL',
             valueLabel: 'Valeur de l’option',
             changeLabel: 'Variation de prix',
             addAdjustment: 'Ajouter un ajustement de prix',

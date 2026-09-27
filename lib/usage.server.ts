@@ -31,7 +31,9 @@ export async function consumeRowRuns(userId: string, rows: number, limit: number
     const { data, error } = await admin.rpc('consume_row_runs', { p_user_id: userId, p_rows: rows, p_limit: limit });
     const result = Array.isArray(data) ? data[0] : data;
     if (error || !result) {
-        return limit === null ? { allowed: true, used: 0 } : { allowed: false, used: 0, reason: 'unavailable' };
+        // Fail open: a metering outage (or migration 003 not yet applied) must never block paying customers.
+        console.error('Row-run metering unavailable:', error?.message);
+        return { allowed: true, used: 0 };
     }
     return result.allowed ? { allowed: true, used: result.used } : { allowed: false, used: result.used, reason: 'limit' };
 }
