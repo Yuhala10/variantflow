@@ -1,22 +1,26 @@
 'use client';
 
 import { Grid3x3, Layers, SlidersHorizontal, Wrench } from 'lucide-react';
+import { useI18n } from '../i18n/i18n-provider';
 import { cn } from '../../lib/utils';
 
 export type WorkspaceTab = 'build' | 'rules' | 'variants' | 'tools';
 
-const TABS: Array<{ id: WorkspaceTab; label: string; icon: typeof Layers }> = [
-    { id: 'build', label: 'Product', icon: Layers },
-    { id: 'rules', label: 'Rules', icon: SlidersHorizontal },
-    { id: 'variants', label: 'Variants', icon: Grid3x3 },
-    { id: 'tools', label: 'Tools', icon: Wrench },
+const TABS: Array<{ id: WorkspaceTab; icon: typeof Layers }> = [
+    { id: 'build', icon: Layers },
+    { id: 'rules', icon: SlidersHorizontal },
+    { id: 'variants', icon: Grid3x3 },
+    { id: 'tools', icon: Wrench },
 ];
 
 export function MobileTabs({ active, onChange, variantCount, issueCount }: { active: WorkspaceTab; onChange: (tab: WorkspaceTab) => void; variantCount: number; issueCount: number }) {
+    const { t } = useI18n();
+    const labels = t.workspace.tabs;
+
     return (
-        <nav aria-label="Workspace sections" className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-line bg-canvas/85 backdrop-blur-xl backdrop-saturate-150 lg:hidden">
+        <nav aria-label={labels.label} className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-line bg-canvas/85 backdrop-blur-xl backdrop-saturate-150 lg:hidden">
             <ul className="mx-auto grid max-w-lg grid-cols-4">
-                {TABS.map(({ id, label, icon: Icon }) => {
+                {TABS.map(({ id, icon: Icon }) => {
                     const selected = active === id;
                     const badge = id === 'variants' && variantCount > 0 ? variantCount : null;
                     return (
@@ -35,7 +39,7 @@ export function MobileTabs({ active, onChange, variantCount, issueCount }: { act
                                         </span>
                                     )}
                                 </span>
-                                {label}
+                                {labels[id]}
                             </button>
                         </li>
                     );

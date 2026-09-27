@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Dialog } from '@base-ui/react/dialog';
 import { ArrowUpRight, Check, Loader2, RefreshCw, X } from 'lucide-react';
 import { BILLING_PLANS, SubscriptionTier } from '../../types';
+import { useI18n } from '../i18n/i18n-provider';
 import { cn } from '../../lib/utils';
 
 interface UpgradeDialogProps {
@@ -17,15 +18,16 @@ interface UpgradeDialogProps {
 const PAID_TIERS: SubscriptionTier[] = ['PRO', 'SCALE'];
 
 export function UpgradeDialog({ open, onOpenChange, onRefreshAccess, onError }: UpgradeDialogProps) {
+    const { t, href, locale } = useI18n();
+    const copy = t.workspace.upgradeDialog;
     const [selectedTier, setSelectedTier] = useState<SubscriptionTier>('PRO');
     const [checkoutOpened, setCheckoutOpened] = useState(false);
     const [busy, setBusy] = useState<'checkout' | 'refresh' | null>(null);
     const plan = BILLING_PLANS[selectedTier];
+    const money = (amount: number) => (locale === 'fr' ? `${amount} $` : `$${amount}`);
 
     const startCheckout = async () => {
-        const paymentLink = selectedTier === 'PRO'
-            ? process.env.NEXT_PUBLIC_PAYMENTO_PRO_LINK
-            : process.env.NEXT_PUBLIC_PAYMENTO_SCALE_LINK;
+        const paymentLink = selectedTier === 'PRO' ? process.env.NEXT_PUBLIC_PAYMENTO_PRO_LINK : process.env.NEXT_PUBLIC_PAYMENTO_SCALE_LINK;
 
         if (paymentLink) {
             window.open(paymentLink, '_blank', 'noopener,noreferrer');
@@ -41,13 +43,13 @@ export function UpgradeDialog({ open, onOpenChange, onRefreshAccess, onError }: 
                 body: JSON.stringify({ tier: selectedTier }),
             });
             const payload = await response.json().catch(() => null);
-            if (!response.ok) throw new Error(payload?.error || 'Payments are temporarily unavailable.');
+            if (!response.ok) throw new Error();
             if (payload?.checkoutUrl) {
                 window.open(payload.checkoutUrl, '_blank', 'noopener,noreferrer');
                 setCheckoutOpened(true);
             }
-        } catch (error) {
-            onError(error instanceof Error ? error.message : 'Payments are temporarily unavailable.');
+        } catch {
+            onError(copy.unavailable);
         } finally {
             setBusy(null);
         }
@@ -58,7 +60,7 @@ export function UpgradeDialog({ open, onOpenChange, onRefreshAccess, onError }: 
         const upgraded = await onRefreshAccess();
         setBusy(null);
         if (upgraded) onOpenChange(false);
-        else onError('We haven’t received the payment confirmation yet. It usually takes under a minute.');
+        else onError(copy.notReceived);
     };
 
     return (
@@ -78,20 +80,15 @@ export function UpgradeDialog({ open, onOpenChange, onRefreshAccess, onError }: 
                     <div className="mx-auto mt-2.5 h-1 w-10 shrink-0 rounded-full bg-line-strong sm:hidden" aria-hidden="true" />
                     <div className="flex items-start justify-between gap-4 px-6 pb-2 pt-5 sm:px-7 sm:pt-7">
                         <div>
-                            <Dialog.Title className="text-xl font-semibold tracking-tight text-ink">Upgrade your workspace</Dialog.Title>
-                            <Dialog.Description className="mt-1 text-sm text-ink-2">
-                                Unlimited variants, CSV import and supplier cleanup. Cancel anytime.
-                            </Dialog.Description>
+                            <Dialog.Title className="text-xl font-semibold tracking-tight text-ink">{copy.title}</Dialog.Title>
+                            <Dialog.Description className="mt-1 text-sm text-ink-2">{copy.description}</Dialog.Description>
                         </div>
-                        <Dialog.Close aria-label="Close" className="btn btn-ghost btn-icon btn-sm -mr-2 -mt-1 shrink-0">
-                            <X />
-                        </Dialog.Close>
+                        <Dialog.Close aria-label={t.common.close} className="btn btn-ghost btn-icon btn-sm -mr-2 -mt-1 shrink-0"><X /></Dialog.Close>
                     </div>
 
                     <div className="scroll-thin overflow-y-auto px-6 pb-6 pt-4 sm:px-7 sm:pb-7">
-                        <div role="radiogroup" aria-label="Plan" className="grid gap-3 sm:grid-cols-2">
+                        <div role="radiogroup" aria-label={copy.planLabel} className="grid gap-3 sm:grid-cols-2">
                             {PAID_TIERS.map((tierId) => {
-                                const option = BILLING_PLANS[tierId];
                                 const selected = selectedTier === tierId;
                                 return (
                                     <button
@@ -100,29 +97,26 @@ export function UpgradeDialog({ open, onOpenChange, onRefreshAccess, onError }: 
                                         role="radio"
                                         aria-checked={selected}
                                         onClick={() => { setSelectedTier(tierId); setCheckoutOpened(false); }}
-                                        className={cn(
-                                            'relative rounded-2xl border p-5 text-left transition-all duration-200',
-                                            selected ? 'border-brand bg-brand-soft/60 shadow-md ring-1 ring-brand' : 'border-line bg-surface hover:border-line-strong',
-                                        )}
+                                        className={cn('relative rounded-2xl border p-5 text-left transition-all duration-200', selected ? 'border-brand bg-brand-soft/60 shadow-md ring-1 ring-brand' : 'border-line bg-surface hover:border-line-strong')}
                                     >
                                         <span className="flex items-center justify-between">
-                                            <span className="text-base font-semibold text-ink">{option.name}</span>
+                                            <span className="text-base font-semibold text-ink">{t.plans[tierId].name}</span>
                                             <span className={cn('inline-flex h-5 w-5 items-center justify-center rounded-full border transition-colors', selected ? 'border-brand bg-brand text-on-brand' : 'border-line-strong')}>
                                                 {selected && <Check className="h-3 w-3" />}
                                             </span>
                                         </span>
                                         <span className="mt-3 flex items-baseline gap-1">
-                                            <span className="text-3xl font-semibold tracking-tight text-ink">${option.priceUsdt}</span>
-                                            <span className="text-sm text-ink-3">USDT / month</span>
+                                            <span className="text-3xl font-semibold tracking-tight text-ink">{money(BILLING_PLANS[tierId].priceUsdt)}</span>
+                                            <span className="text-sm text-ink-3">{t.common.perMonth}</span>
                                         </span>
-                                        <span className="mt-2 block text-sm leading-relaxed text-ink-2">{option.description}</span>
+                                        <span className="mt-2 block text-sm leading-relaxed text-ink-2">{t.plans[tierId].description}</span>
                                     </button>
                                 );
                             })}
                         </div>
 
                         <ul className="mt-5 grid gap-2.5 rounded-2xl bg-surface-2/60 p-5 sm:grid-cols-2">
-                            {plan.features.filter((feature) => feature.included).map((feature) => (
+                            {t.plans[selectedTier].features.filter((feature) => feature.included).map((feature) => (
                                 <li key={feature.text} className="flex items-start gap-2.5 text-sm text-ink-2">
                                     <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden="true" /> {feature.text}
                                 </li>
@@ -130,19 +124,19 @@ export function UpgradeDialog({ open, onOpenChange, onRefreshAccess, onError }: 
                         </ul>
 
                         <div className="mt-6 space-y-3">
-                            <button type="button" onClick={startCheckout} disabled={busy !== null} className="btn btn-primary btn-lg w-full">
+                            <button type="button" onClick={startCheckout} disabled={busy !== null} className="btn btn-primary btn-lg w-full whitespace-normal">
                                 {busy === 'checkout' ? <Loader2 className="animate-spin" /> : <ArrowUpRight />}
-                                Continue to secure payment · ${plan.priceUsdt}
+                                {copy.continue({ price: plan.priceUsdt })}
                             </button>
                             {checkoutOpened && (
                                 <button type="button" onClick={refresh} disabled={busy !== null} className="btn btn-secondary btn-lg animate-rise w-full">
                                     {busy === 'refresh' ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-                                    I’ve paid — refresh my plan
+                                    {copy.refresh}
                                 </button>
                             )}
                             <p className="text-center text-xs leading-relaxed text-ink-3">
-                                Pay with USDT (TRC20) using the same email as your account.{' '}
-                                <Link href="/how-to-pay" target="_blank" className="font-medium text-brand underline-offset-2 hover:underline">How payment works</Link>
+                                {copy.note}{' '}
+                                <Link href={href('/how-to-pay')} target="_blank" className="font-medium text-brand underline-offset-2 hover:underline">{copy.howLink}</Link>
                             </p>
                         </div>
                     </div>

@@ -16,7 +16,8 @@ const TIER_ENTITLEMENTS: Record<SubscriptionTier, EntitlementSet> = {
         canUseMultiPlatformExport: false,
         maxProjects: 1,
         maxVariantsPerProject: 50,
-        monthlyRowRuns: 50,
+        // Free is limited per export (50 variants), not per month.
+        monthlyRowRuns: null,
     },
     PRO: {
         canExportCsv: true,
@@ -25,7 +26,8 @@ const TIER_ENTITLEMENTS: Record<SubscriptionTier, EntitlementSet> = {
         canUsePricingRules: true,
         canSaveTemplates: true,
         canImportCsv: true,
-        canNormalizeSuppliers: true,
+        // Pro gets supplier data cleanup (canTransformCatalog); full normalization is Scale-only.
+        canNormalizeSuppliers: false,
         canUseAiMapping: false,
         canTransformCatalog: true,
         canUseMultiPlatformExport: false,

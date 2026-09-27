@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, X } from 'lucide-react';
-import { cn } from '../../lib/utils';
+import { useI18n } from '../i18n/i18n-provider';
 
 export type NoticeTone = 'success' | 'error';
 interface NoticeState { id: number; tone: NoticeTone; text: string }
@@ -19,6 +19,8 @@ export function useNotice() {
 }
 
 export function Notice({ notice, onDismiss }: { notice: NoticeState | null; onDismiss: () => void }) {
+    const { t } = useI18n();
+
     useEffect(() => {
         if (!notice) return;
         const timer = window.setTimeout(onDismiss, notice.tone === 'error' ? 6000 : 3500);
@@ -39,8 +41,8 @@ export function Notice({ notice, onDismiss }: { notice: NoticeState | null; onDi
                     {notice.tone === 'success'
                         ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
                         : <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-danger" />}
-                    <p className={cn('flex-1 text-sm leading-relaxed text-ink')}>{notice.text}</p>
-                    <button type="button" onClick={onDismiss} aria-label="Dismiss" className="-m-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-3 hover:bg-surface-2">
+                    <p className="flex-1 text-sm leading-relaxed text-ink">{notice.text}</p>
+                    <button type="button" onClick={onDismiss} aria-label={t.common.dismiss} className="-m-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-3 hover:bg-surface-2">
                         <X className="h-4 w-4" />
                     </button>
                 </div>

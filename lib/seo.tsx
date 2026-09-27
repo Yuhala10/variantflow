@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
-import { BILLING_PLANS } from '../types';
+import { BILLING_PLANS, SubscriptionTier } from '../types';
 import { absoluteUrl, siteConfig } from './site';
+import { getDictionary, htmlLang, localePath, locales, ogLocale, type Locale } from './i18n';
 
 type Schema = Record<string, unknown>;
 
@@ -14,12 +15,13 @@ export function JsonLd({ data }: { data: Schema | Schema[] }) {
     );
 }
 
-const SHARE_IMAGE = {
-    url: '/opengraph-image',
-    width: 1200,
-    height: 630,
-    alt: 'VariantFlow — generate Shopify product variants, SKUs and CSV exports in minutes',
-};
+export const shareImagePath = (locale: Locale) => localePath(locale, '/og.png');
+
+/** hreflang alternates for a path that exists in every language. */
+export const languageAlternates = (path: string) => ({
+    ...Object.fromEntries(locales.map((locale) => [htmlLang[locale], localePath(locale, path)])),
+    'x-default': path,
+});
 
 interface PageMetadataInput {
     title: string;
@@ -30,85 +32,89 @@ interface PageMetadataInput {
     noIndex?: boolean;
 }
 
-export function pageMetadata({ title, description, path, absoluteTitle, noIndex }: PageMetadataInput): Metadata {
+export function pageMetadata(locale: Locale, { title, description, path, absoluteTitle, noIndex }: PageMetadataInput): Metadata {
     const socialTitle = absoluteTitle ? title : `${title} · ${siteConfig.name}`;
+    const url = localePath(locale, path);
+    const image = { url: shareImagePath(locale), width: 1200, height: 630, alt: getDictionary(locale).meta.ogAlt };
+
     return {
         title: absoluteTitle ? { absolute: title } : title,
         description,
-        alternates: { canonical: path },
-        // Page-level openGraph replaces the inherited object, so the share image is set explicitly.
-        openGraph: { title: socialTitle, description, url: path, type: 'website', siteName: siteConfig.name, locale: siteConfig.locale, images: [SHARE_IMAGE] },
-        twitter: { card: 'summary_large_image', title: socialTitle, description, images: [SHARE_IMAGE.url] },
+        alternates: { canonical: url, languages: languageAlternates(path) },
+        openGraph: {
+            title: socialTitle,
+            description,
+            url,
+            type: 'website',
+            siteName: siteConfig.name,
+            locale: ogLocale[locale],
+            alternateLocale: locales.filter((other) => other !== locale).map((other) => ogLocale[other]),
+            images: [image],
+        },
+        twitter: { card: 'summary_large_image', title: socialTitle, description, images: [image.url] },
         robots: noIndex ? { index: false, follow: false, googleBot: { index: false, follow: false } } : undefined,
     };
 }
 
-export const organizationSchema = (): Schema => ({
+export const organizationSchema = (locale: Locale): Schema => ({
     '@context': 'https://schema.org',
     '@type': 'Organization',
     '@id': `${siteConfig.url}/#organization`,
     name: siteConfig.name,
     url: siteConfig.url,
     logo: absoluteUrl('/logo.png'),
-    description: siteConfig.shortDescription,
+    description: getDictionary(locale).meta.shortDescription,
 });
 
-export const websiteSchema = (): Schema => ({
+export const websiteSchema = (locale: Locale): Schema => ({
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     '@id': `${siteConfig.url}/#website`,
     name: siteConfig.name,
-    url: siteConfig.url,
-    description: siteConfig.description,
-    inLanguage: 'en',
+    url: absoluteUrl(localePath(locale, '/')),
+    description: getDictionary(locale).meta.description,
+    inLanguage: locales.map((other) => htmlLang[other]),
     publisher: { '@id': `${siteConfig.url}/#organization` },
 });
 
-const planOffers = () =>
-    Object.values(BILLING_PLANS).map((plan) => ({
-        '@type': 'Offer',
-        name: plan.name,
-        price: plan.priceUsdt.toFixed(2),
-        priceCurrency: 'USD',
-        description: plan.description,
-        url: absoluteUrl('/pricing'),
-        availability: 'https://schema.org/InStock',
-        ...(plan.priceUsdt > 0 && {
-            priceSpecification: {
-                '@type': 'UnitPriceSpecification',
+export const softwareApplicationSchema = (locale: Locale): Schema => {
+    const t = getDictionary(locale);
+    return {
+        '@context': 'https://schema.org',
+        '@type': 'SoftwareApplication',
+        '@id': `${siteConfig.url}/#software`,
+        name: siteConfig.name,
+        url: absoluteUrl(localePath(locale, '/')),
+        applicationCategory: 'BusinessApplication',
+        applicationSubCategory: t.meta.applicationSubCategory,
+        operatingSystem: 'Web browser, iOS, Android, Windows, macOS',
+        description: t.meta.description,
+        inLanguage: htmlLang[locale],
+        availableLanguage: locales.map((other) => htmlLang[other]),
+        featureList: t.meta.featureList,
+        offers: (Object.keys(BILLING_PLANS) as SubscriptionTier[]).map((tier) => {
+            const plan = BILLING_PLANS[tier];
+            return {
+                '@type': 'Offer',
+                name: t.plans[tier].name,
+                description: t.plans[tier].description,
                 price: plan.priceUsdt.toFixed(2),
                 priceCurrency: 'USD',
-                unitCode: 'MON',
-                billingDuration: 'P1M',
-            },
+                url: absoluteUrl(localePath(locale, '/pricing')),
+                availability: 'https://schema.org/InStock',
+                ...(plan.priceUsdt > 0 && {
+                    priceSpecification: { '@type': 'UnitPriceSpecification', price: plan.priceUsdt.toFixed(2), priceCurrency: 'USD', unitCode: 'MON', billingDuration: 'P1M' },
+                }),
+            };
         }),
-    }));
+        publisher: { '@id': `${siteConfig.url}/#organization` },
+    };
+};
 
-export const softwareApplicationSchema = (): Schema => ({
-    '@context': 'https://schema.org',
-    '@type': 'SoftwareApplication',
-    '@id': `${siteConfig.url}/#software`,
-    name: siteConfig.name,
-    url: siteConfig.url,
-    applicationCategory: 'BusinessApplication',
-    applicationSubCategory: 'E-commerce catalog management',
-    operatingSystem: 'Web browser, iOS, Android, Windows, macOS',
-    description: siteConfig.description,
-    featureList: [
-        'Generate every product variant combination from option groups',
-        'Rule-based SKU templates such as TSH-{COLOR}-{SIZE}',
-        'Attribute-based pricing rules',
-        'Real-time catalog validation for duplicates, missing prices and invalid SKUs',
-        'Shopify-ready CSV export',
-        'Supplier CSV import with automatic column mapping',
-    ],
-    offers: planOffers(),
-    publisher: { '@id': `${siteConfig.url}/#organization` },
-});
-
-export const faqSchema = (items: ReadonlyArray<{ question: string; answer: string }>): Schema => ({
+export const faqSchema = (items: ReadonlyArray<{ question: string; answer: string }>, locale: Locale): Schema => ({
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
+    inLanguage: htmlLang[locale],
     mainEntity: items.map((item) => ({
         '@type': 'Question',
         name: item.question,
@@ -116,25 +122,21 @@ export const faqSchema = (items: ReadonlyArray<{ question: string; answer: strin
     })),
 });
 
-export const breadcrumbSchema = (items: ReadonlyArray<{ name: string; path: string }>): Schema => ({
+export const breadcrumbSchema = (locale: Locale, items: ReadonlyArray<{ name: string; path: string }>): Schema => ({
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     itemListElement: items.map((item, index) => ({
         '@type': 'ListItem',
         position: index + 1,
         name: item.name,
-        item: absoluteUrl(item.path),
+        item: absoluteUrl(localePath(locale, item.path)),
     })),
 });
 
-export const howToSchema = (name: string, steps: ReadonlyArray<{ title: string; text: string }>): Schema => ({
+export const howToSchema = (locale: Locale, name: string, steps: ReadonlyArray<{ title: string; text: string }>): Schema => ({
     '@context': 'https://schema.org',
     '@type': 'HowTo',
     name,
-    step: steps.map((step, index) => ({
-        '@type': 'HowToStep',
-        position: index + 1,
-        name: step.title,
-        text: step.text,
-    })),
+    inLanguage: htmlLang[locale],
+    step: steps.map((step, index) => ({ '@type': 'HowToStep', position: index + 1, name: step.title, text: step.text })),
 });

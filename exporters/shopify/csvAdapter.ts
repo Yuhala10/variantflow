@@ -1,4 +1,3 @@
-import { useProductStore } from '../../store/productStore';
 import { InternalVariant, OptionGroup, PriceModifierRule, SkuTemplateConfig } from '../../types';
 
 export interface CatalogExportInput {
@@ -66,17 +65,4 @@ export function convertCatalogToShopifyCsv(catalog: CatalogExportInput): string 
     });
 
     return [headers.join(','), ...rows].join('\n');
-}
-
-export function convertToShopifyCsv(): string {
-    const store = useProductStore.getState();
-
-    return convertCatalogToShopifyCsv({
-        productTitle: store.productTitle,
-        options: store.options,
-        skuConfig: store.skuConfig,
-        basePrice: store.basePrice,
-        priceRules: store.priceRules,
-        variants: store.variants,
-    });
 }

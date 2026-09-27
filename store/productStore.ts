@@ -36,6 +36,8 @@ interface ProductCatalogState {
     setAccess: (access: AccountAccess) => void;
     getCatalogSnapshot: () => CatalogSnapshot;
     hydrateCatalog: (catalog: Partial<CatalogSnapshot>) => void;
+    /** Replaces the whole catalog (switching projects, imports); missing fields reset to empty. */
+    replaceCatalog: (catalog: Partial<CatalogSnapshot>) => void;
 }
 
 export interface CatalogSnapshot {
@@ -129,6 +131,18 @@ export const useProductStore = create<ProductCatalogState>((set, get) => ({
             priceRules: catalog.priceRules ?? state.priceRules,
             overrides: catalog.overrides ?? state.overrides,
         }));
+        get().recompileCatalogMatrix();
+    },
+
+    replaceCatalog: (catalog) => {
+        set({
+            productTitle: catalog.productTitle ?? '',
+            options: catalog.options ?? [],
+            skuConfig: catalog.skuConfig ?? { pattern: '' },
+            basePrice: catalog.basePrice ?? 0,
+            priceRules: catalog.priceRules ?? [],
+            overrides: catalog.overrides ?? {},
+        });
         get().recompileCatalogMatrix();
     },
 

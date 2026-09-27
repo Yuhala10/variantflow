@@ -2,6 +2,7 @@
 
 import { KeyboardEvent, useState } from 'react';
 import { X } from 'lucide-react';
+import { useI18n } from '../i18n/i18n-provider';
 
 interface OptionValuesInputProps {
     id: string;
@@ -13,6 +14,9 @@ interface OptionValuesInputProps {
 
 /** Type a value and press Enter or comma to add it. Pasting a comma- or line-separated list adds them all. */
 export function OptionValuesInput({ id, values, onChange, autoFocus, optionName }: OptionValuesInputProps) {
+    const { t } = useI18n();
+    const copy = t.workspace.options;
+    const label = optionName || copy.fallbackOption;
     const [draft, setDraft] = useState('');
 
     const commit = (raw: string) => {
@@ -48,7 +52,7 @@ export function OptionValuesInput({ id, values, onChange, autoFocus, optionName 
                     <button
                         type="button"
                         onClick={() => remove(index)}
-                        aria-label={`Remove ${value} from ${optionName || 'option'}`}
+                        aria-label={copy.removeValue({ value, option: label })}
                         className="inline-flex h-6 w-6 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-surface-3 hover:text-ink"
                     >
                         <X className="h-3.5 w-3.5" />
@@ -74,8 +78,8 @@ export function OptionValuesInput({ id, values, onChange, autoFocus, optionName 
                         commit(`${draft},${text}`);
                     }
                 }}
-                placeholder={values.length ? 'Add value…' : 'Type a value, press Enter'}
-                aria-label={`Values for ${optionName || 'option'}`}
+                placeholder={values.length ? copy.valuePlaceholder : copy.valuePlaceholderEmpty}
+                aria-label={copy.valuesFor({ option: label })}
                 className="min-w-[8rem] flex-1 bg-transparent px-1.5 py-1 text-sm text-ink outline-none placeholder:text-ink-3"
             />
         </div>

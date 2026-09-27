@@ -1,11 +1,14 @@
 import type { MetadataRoute } from 'next';
 import { siteConfig } from '../lib/site';
+import { getDictionary } from '../lib/i18n';
 
+// The manifest is shared by both languages; English is the default.
 export default function manifest(): MetadataRoute.Manifest {
+    const t = getDictionary('en');
     return {
-        name: `${siteConfig.name} — Variant & SKU Builder`,
+        name: t.meta.manifestName,
         short_name: siteConfig.name,
-        description: siteConfig.shortDescription,
+        description: t.meta.shortDescription,
         start_url: '/workspace',
         scope: '/',
         display: 'standalone',

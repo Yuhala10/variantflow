@@ -4,24 +4,21 @@ import React, { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { useProductStore } from '../../store/productStore';
 import { OptionValuesInput } from './option-values-input';
-
-const PRESETS: Array<{ name: string; values: string[] }> = [
-    { name: 'Size', values: ['S', 'M', 'L', 'XL'] },
-    { name: 'Color', values: ['Black', 'White'] },
-    { name: 'Material', values: ['Cotton', 'Polyester'] },
-];
+import { useI18n } from '../i18n/i18n-provider';
 
 // Shopify supports up to three options per product.
 const MAX_OPTIONS = 3;
 
 export const OptionsBuilder: React.FC = () => {
+    const { t } = useI18n();
+    const copy = t.workspace.options;
     const { productTitle, setProductTitle, options, addOptionGroup, updateOptionGroup, removeOptionGroup } = useProductStore();
     const [newGroupName, setNewGroupName] = useState('');
     const [lastAddedId, setLastAddedId] = useState<string | null>(null);
 
     const atLimit = options.length >= MAX_OPTIONS;
     const existingNames = new Set(options.map((option) => option.name.trim().toLowerCase()));
-    const availablePresets = PRESETS.filter((preset) => !existingNames.has(preset.name.toLowerCase()));
+    const availablePresets = copy.presets.filter((preset) => !existingNames.has(preset.name.toLowerCase()));
 
     const addGroup = (name: string, values: string[] = []) => {
         addOptionGroup(name, values);
@@ -39,13 +36,13 @@ export const OptionsBuilder: React.FC = () => {
     return (
         <div className="space-y-6">
             <div>
-                <label htmlFor="product-title" className="label">Product title</label>
+                <label htmlFor="product-title" className="label">{copy.productTitle}</label>
                 <input
                     id="product-title"
                     type="text"
                     value={productTitle}
                     onChange={(event) => setProductTitle(event.target.value)}
-                    placeholder="e.g. Heavyweight Cotton T-Shirt"
+                    placeholder={copy.productTitlePlaceholder}
                     className="field"
                     autoComplete="off"
                 />
@@ -53,13 +50,13 @@ export const OptionsBuilder: React.FC = () => {
 
             <div>
                 <div className="mb-3 flex items-baseline justify-between gap-3">
-                    <h3 className="text-[13px] font-semibold text-ink">Options</h3>
-                    <span className="text-xs text-ink-3">{options.length} of {MAX_OPTIONS}</span>
+                    <h3 className="text-[13px] font-semibold text-ink">{copy.options}</h3>
+                    <span className="text-xs text-ink-3">{copy.count({ count: options.length, max: MAX_OPTIONS })}</span>
                 </div>
 
                 {options.length === 0 && (
                     <p className="mb-3 rounded-xl border border-dashed border-line-strong bg-surface-2/50 px-4 py-5 text-center text-sm text-ink-3">
-                        Add options like size or color to generate variants.
+                        {copy.empty}
                     </p>
                 )}
 
@@ -71,14 +68,14 @@ export const OptionsBuilder: React.FC = () => {
                                     type="text"
                                     value={group.name}
                                     onChange={(event) => updateOptionGroup(group.id, event.target.value, group.values)}
-                                    placeholder="Option name"
-                                    aria-label="Option name"
+                                    placeholder={copy.optionName}
+                                    aria-label={copy.optionName}
                                     className="min-h-9 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 text-sm font-semibold text-ink outline-none transition-colors hover:border-line focus:border-brand focus:bg-surface"
                                 />
                                 <button
                                     type="button"
                                     onClick={() => removeOptionGroup(group.id)}
-                                    aria-label={`Remove ${group.name || 'option'}`}
+                                    aria-label={copy.removeOption({ name: group.name || copy.fallbackOption })}
                                     className="btn btn-ghost btn-icon btn-sm text-ink-3 hover:!bg-danger-soft hover:!text-danger"
                                 >
                                     <Trash2 />
@@ -102,17 +99,17 @@ export const OptionsBuilder: React.FC = () => {
                                 type="text"
                                 value={newGroupName}
                                 onChange={(event) => setNewGroupName(event.target.value)}
-                                placeholder="New option, e.g. Style"
-                                aria-label="New option name"
+                                placeholder={copy.newOptionPlaceholder}
+                                aria-label={copy.newOptionLabel}
                                 className="field"
                             />
                             <button type="submit" className="btn btn-secondary shrink-0" disabled={!newGroupName.trim()}>
-                                <Plus /> Add
+                                <Plus /> {copy.add}
                             </button>
                         </form>
                         {availablePresets.length > 0 && (
                             <div className="mt-3 flex flex-wrap items-center gap-2">
-                                <span className="text-xs text-ink-3">Quick add:</span>
+                                <span className="text-xs text-ink-3">{copy.quickAdd}</span>
                                 {availablePresets.map((preset) => (
                                     <button
                                         key={preset.name}
@@ -127,7 +124,7 @@ export const OptionsBuilder: React.FC = () => {
                         )}
                     </>
                 )}
-                {atLimit && <p className="hint">Shopify supports up to three options per product.</p>}
+                {atLimit && <p className="hint">{copy.limit}</p>}
             </div>
         </div>
     );

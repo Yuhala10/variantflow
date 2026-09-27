@@ -2,18 +2,12 @@ import { z } from 'zod';
 
 export type SubscriptionTier = 'FREE' | 'PRO' | 'SCALE';
 
-export interface PlanFeature {
-    text: string;
-    included: boolean;
-}
-
+/** Structural plan data. Names, descriptions and feature lists are translated in lib/i18n/dictionaries. */
 export interface PricingPlan {
     id: SubscriptionTier;
-    name: string;
     priceUsdt: number;
-    rowRunLimit: number;
-    description: string;
-    features: PlanFeature[];
+    /** Monthly row-run allowance; null means no monthly cap. */
+    rowRunLimit: number | null;
 }
 
 export interface EntitlementSet {
@@ -34,6 +28,12 @@ export interface EntitlementSet {
 }
 
 export type AccessRole = 'owner' | 'admin';
+
+export interface AccountUsage {
+    /** Row-runs consumed this calendar month (UTC). */
+    rowRunsUsed: number;
+    monthStart: string;
+}
 
 /** Resolved on the server and sent to the browser; the browser only displays it. */
 export interface AccountAccess {
@@ -80,52 +80,38 @@ export interface ValidationError {
     rowId?: string;
     field: 'title' | 'option-name' | 'option-value' | 'sku' | 'price' | 'structure';
     severity: ValidationErrorSeverity;
+    /** Stable identifier used to show the message in the user's language. */
+    code: ValidationCode;
+    params?: Record<string, string | number>;
+    /** English fallback, used in logs and API responses. */
     message: string;
 }
 
+export type ValidationCode =
+    | 'title-missing'
+    | 'option-name-empty'
+    | 'option-name-duplicate'
+    | 'option-values-empty'
+    | 'option-value-duplicate'
+    | 'variant-duplicate'
+    | 'variant-missing-values'
+    | 'variant-unexpected-options'
+    | 'sku-missing'
+    | 'sku-invalid'
+    | 'sku-duplicate'
+    | 'price-invalid'
+    | 'price-negative'
+    // Advanced checks (Pro and Scale)
+    | 'title-too-long'
+    | 'value-whitespace'
+    | 'value-casing'
+    | 'sku-too-long'
+    | 'price-zero'
+    | 'price-outlier'
+    | 'shopify-variant-limit';
+
 export const BILLING_PLANS: Record<SubscriptionTier, PricingPlan> = {
-    FREE: {
-        id: 'FREE',
-        name: 'Free',
-        priceUsdt: 0,
-        rowRunLimit: 50,
-        description: 'Everything you need to build and export your first catalogs.',
-        features: [
-            { text: '1 saved catalog project', included: true },
-            { text: 'Up to 50 variants per export', included: true },
-            { text: 'SKU templates and pricing rules', included: true },
-            { text: 'Real-time catalog validation', included: true },
-            { text: 'Shopify CSV export', included: true },
-            { text: 'CSV import and cleanup tools', included: false },
-        ],
-    },
-    PRO: {
-        id: 'PRO',
-        name: 'Pro',
-        priceUsdt: 19,
-        rowRunLimit: 2000,
-        description: 'For growing brands managing larger and more frequent catalogs.',
-        features: [
-            { text: 'Everything in Free', included: true },
-            { text: 'Unlimited projects and variants', included: true },
-            { text: 'CSV import with automatic column mapping', included: true },
-            { text: 'Supplier data cleanup', included: true },
-            { text: 'Advanced validation', included: true },
-            { text: '2,000 row-runs per month', included: true },
-        ],
-    },
-    SCALE: {
-        id: 'SCALE',
-        name: 'Scale',
-        priceUsdt: 49,
-        rowRunLimit: 15000,
-        description: 'For high-volume dropshippers and multi-store operations.',
-        features: [
-            { text: 'Everything in Pro', included: true },
-            { text: '15,000 row-runs per month', included: true },
-            { text: 'Supplier catalog normalization', included: true },
-            { text: 'Smart assisted column mapping', included: true },
-            { text: 'Multi-platform exporters', included: true },
-        ],
-    },
+    FREE: { id: 'FREE', priceUsdt: 0, rowRunLimit: null },
+    PRO: { id: 'PRO', priceUsdt: 19, rowRunLimit: 2000 },
+    SCALE: { id: 'SCALE', priceUsdt: 49, rowRunLimit: 15000 },
 };
