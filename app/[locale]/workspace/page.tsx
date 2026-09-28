@@ -38,7 +38,7 @@ interface PendingSave {
     session: number;
 }
 
-const EMPTY_CATALOG: CatalogSnapshot = { productTitle: '', options: [], skuConfig: { pattern: '' }, basePrice: 0, priceRules: [], overrides: {} };
+const EMPTY_CATALOG: CatalogSnapshot = { productTitle: '', options: [], skuConfig: { pattern: '' }, basePrice: 0, priceRules: [], overrides: {}, excluded: [] };
 
 const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
 
@@ -345,6 +345,7 @@ export default function WorkspacePage() {
             basePrice: catalog.basePrice,
             priceRules: [],
             overrides: catalog.overrides,
+            excluded: catalog.excluded,
         });
         show('success', t.workspace.tools.imported({ variants: useProductStore.getState().variants.length }));
         setTab('variants');

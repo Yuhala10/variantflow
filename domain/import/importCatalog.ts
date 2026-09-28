@@ -1,5 +1,5 @@
 import Papa from 'papaparse';
-import { generateVariantId } from '../variant/generateVariants';
+import { generateCartesianMatrix, generateVariantId } from '../variant/generateVariants';
 
 export type ColumnRole = 'title' | 'sku' | 'price' | 'option' | 'ignore';
 
@@ -21,7 +21,10 @@ export interface ImportedCatalog {
     options: Array<{ name: string; values: string[] }>;
     basePrice: number;
     overrides: Record<string, { sku?: string; price?: number }>;
-    stats: { rows: number; imported: number; skipped: number; variants: number; droppedOptions: string[] };
+    /** Generated combinations that are not in the file. */
+    excluded: string[];
+    /** `rows` counts the selected product's rows only; `products` is how many products the file lists. */
+    stats: { rows: number; imported: number; skipped: number; variants: number; droppedOptions: string[]; products: number };
 }
 
 // Shopify allows three options per product; extra option columns are reported, not imported.
@@ -174,70 +177,130 @@ export function normalizeValue(value: string, optionName: string) {
     return titleCase(cleaned);
 }
 
+const titleColumnOf = (mapping: Record<string, ColumnMapping>) => Object.entries(mapping).find(([, column]) => column.role === 'title')?.[0];
+
+/**
+ * Supplier sheets often list several products. Returns each distinct product title with its row
+ * count, in file order, so the merchant can import one product at a time.
+ */
+export function listProducts(rows: Record<string, string>[], mapping: Record<string, ColumnMapping>): Array<{ title: string; rows: number }> {
+    const titleColumn = titleColumnOf(mapping);
+    if (!titleColumn) return [];
+    const counts = new Map<string, { title: string; rows: number }>();
+    rows.forEach((row) => {
+        const title = cleanValue(row[titleColumn] ?? '');
+        if (!title) return;
+        const key = title.toLowerCase();
+        const entry = counts.get(key);
+        if (entry) entry.rows += 1;
+        else counts.set(key, { title, rows: 1 });
+    });
+    return [...counts.values()];
+}
+
+/**
+ * Automatic choice: split the file by product only when titles repeat (several rows per product).
+ * When every row has its own title ("Tee Red S", "Tee Red M"…) the titles describe variants, so keep all rows.
+ */
+export function resolveProduct(products: Array<{ title: string; rows: number }>, product?: string | null): string | undefined {
+    if (product === null) return undefined;
+    if (product !== undefined) return products.find((entry) => entry.title.toLowerCase() === product.trim().toLowerCase())?.title;
+    return products.length > 1 && products.some((entry) => entry.rows > 1) ? products[0].title : undefined;
+}
+
 export function buildCatalogFromRows(
-    rows: Record<string, string>[],
+    allRows: Record<string, string>[],
     mapping: Record<string, ColumnMapping>,
-    { clean, normalize }: { clean: boolean; normalize: boolean },
+    { clean, normalize, product }: {
+        clean: boolean;
+        normalize: boolean;
+        /** Product title to import, null for every row as one product, or undefined to decide automatically. */
+        product?: string | null;
+    },
 ): ImportedCatalog {
     const entries = Object.entries(mapping);
-    const titleColumn = entries.find(([, column]) => column.role === 'title')?.[0];
+    const titleColumn = titleColumnOf(mapping);
     const skuColumn = entries.find(([, column]) => column.role === 'sku')?.[0];
     const priceColumn = entries.find(([, column]) => column.role === 'price')?.[0];
     const optionColumns = entries
         .filter(([, column]) => column.role === 'option')
-        .map(([header, column]) => ({ header, name: (column.optionName || header).trim() }));
+        .map(([header, column]) => ({ header, name: (column.optionName || header).trim() }))
+        .filter((column) => column.name);
     const usedOptions = optionColumns.slice(0, MAX_IMPORT_OPTIONS);
     const droppedOptions = optionColumns.slice(MAX_IMPORT_OPTIONS).map((column) => column.name);
 
+    // Rows without a title (continuation rows) belong to the product above them, as in Shopify's own CSVs.
+    const products = listProducts(allRows, mapping);
+    const selected = resolveProduct(products, product);
+    let currentTitle = '';
+    const rows = titleColumn && selected
+        ? allRows.filter((row) => {
+            const title = cleanValue(row[titleColumn] ?? '');
+            if (title) currentTitle = title;
+            return currentTitle.toLowerCase() === selected.toLowerCase();
+        })
+        : allRows;
+
     const prepare = (value: string, optionName: string) => (normalize ? normalizeValue(value, optionName) : clean ? cleanValue(value) : value.trim());
 
-    const valuesByOption = new Map<string, string[]>(usedOptions.map((column) => [column.name, []]));
-    const prices: number[] = [];
+    // The first spelling of a value wins, so "Red" and "red" become one value and every row keeps its SKU and price.
+    const valuesByOption = new Map<string, Map<string, string>>(usedOptions.map((column) => [column.name, new Map()]));
     const parsedRows: Array<{ attributes: Record<string, string>; sku?: string; price: number | null }> = [];
     let skipped = 0;
 
     rows.forEach((row) => {
-        const attributes: Record<string, string> = {};
-        for (const column of usedOptions) {
-            const value = prepare(row[column.header] ?? '', column.name);
-            if (!value) { skipped += 1; return; }
-            attributes[column.name] = value;
-            const list = valuesByOption.get(column.name)!;
-            if (!list.some((existing) => existing.toLowerCase() === value.toLowerCase())) list.push(value);
+        const raw = usedOptions.map((column) => ({ name: column.name, value: prepare(row[column.header] ?? '', column.name) }));
+        if (!usedOptions.length || raw.some((entry) => !entry.value)) {
+            skipped += 1;
+            return;
         }
+        const attributes: Record<string, string> = {};
+        raw.forEach(({ name, value }) => {
+            const known = valuesByOption.get(name)!;
+            const key = value.toLowerCase();
+            if (!known.has(key)) known.set(key, value);
+            attributes[name] = known.get(key)!;
+        });
         const price = priceColumn ? parsePrice(row[priceColumn] ?? '') : null;
-        if (price !== null) prices.push(price);
         const skuRaw = skuColumn ? (clean || normalize ? cleanValue(row[skuColumn] ?? '') : (row[skuColumn] ?? '').trim()) : '';
         parsedRows.push({ attributes, sku: skuRaw ? skuRaw.replace(/\s+/g, '-').toUpperCase() : undefined, price });
     });
 
+    const seen = new Set<string>();
+    const unique = parsedRows.filter((row) => {
+        const id = generateVariantId(row.attributes);
+        if (seen.has(id)) { skipped += 1; return false; }
+        seen.add(id);
+        return true;
+    });
+
     // The most common price becomes the base price; other rows keep their own price as an override.
     const counts = new Map<number, number>();
-    prices.forEach((price) => counts.set(price, (counts.get(price) ?? 0) + 1));
+    unique.forEach((row) => { if (row.price !== null) counts.set(row.price, (counts.get(row.price) ?? 0) + 1); });
     const basePrice = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0] ?? 0;
 
     const overrides: ImportedCatalog['overrides'] = {};
-    const seen = new Set<string>();
-    parsedRows.forEach((row) => {
-        if (!usedOptions.length) return;
-        const id = generateVariantId(row.attributes);
-        if (seen.has(id)) { skipped += 1; return; }
-        seen.add(id);
+    unique.forEach((row) => {
         const override: { sku?: string; price?: number } = {};
         if (row.sku) override.sku = row.sku;
         if (row.price !== null && row.price !== basePrice) override.price = row.price;
-        if (Object.keys(override).length) overrides[id] = override;
+        if (Object.keys(override).length) overrides[generateVariantId(row.attributes)] = override;
     });
 
-    const options = usedOptions.map((column) => ({ name: column.name, values: valuesByOption.get(column.name) ?? [] }));
-    const variants = options.length ? options.reduce((total, option) => total * Math.max(option.values.length, 1), 1) : 0;
-    const titleValue = titleColumn ? rows.map((row) => cleanValue(row[titleColumn] ?? '')).find(Boolean) : undefined;
+    const options = usedOptions.map((column) => ({ name: column.name, values: [...(valuesByOption.get(column.name)?.values() ?? [])] }));
+    // Combinations the supplier does not sell are hidden rather than invented.
+    const excluded = options.length
+        ? generateCartesianMatrix(options.map((option, index) => ({ id: String(index), ...option })))
+            .map(generateVariantId)
+            .filter((id) => !seen.has(id))
+        : [];
 
     return {
-        productTitle: titleValue ?? '',
+        productTitle: selected ?? products[0]?.title ?? '',
         options,
         basePrice,
         overrides,
-        stats: { rows: rows.length, imported: seen.size, skipped, variants, droppedOptions },
+        excluded,
+        stats: { rows: rows.length, imported: seen.size, skipped, variants: seen.size, droppedOptions, products: products.length },
     };
 }

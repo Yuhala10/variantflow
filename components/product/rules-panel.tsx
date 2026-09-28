@@ -4,6 +4,8 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { useProductStore } from '../../store/productStore';
 import { useI18n } from '../i18n/i18n-provider';
+import { DecimalInput } from '../ui/decimal-input';
+import { isPartialDecimal, parseDecimal } from '../../lib/number';
 
 export const RulesPanel: React.FC = () => {
     const { t, locale } = useI18n();
@@ -42,8 +44,8 @@ export const RulesPanel: React.FC = () => {
 
     const handleAddRule = (event: React.FormEvent) => {
         event.preventDefault();
-        const modifier = parseFloat(ruleModifier);
-        if (!ruleTarget.trim() || Number.isNaN(modifier)) return;
+        const modifier = parseDecimal(ruleModifier);
+        if (!ruleTarget.trim() || modifier === null) return;
         addPriceRule(ruleTarget.trim(), modifier);
         setRuleTarget('');
         setRuleModifier('');
@@ -91,14 +93,11 @@ export const RulesPanel: React.FC = () => {
                 <label htmlFor="base-price" className="label">{copy.basePrice}</label>
                 <div className="relative">
                     <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-ink-3">{copy.currency}</span>
-                    <input
+                    <DecimalInput
                         id="base-price"
-                        type="number"
-                        inputMode="decimal"
-                        step="0.01"
-                        min="0"
-                        value={basePrice || ''}
-                        onChange={(event) => setBasePrice(parseFloat(event.target.value) || 0)}
+                        blankZero
+                        value={basePrice}
+                        onValueChange={setBasePrice}
                         placeholder="0.00"
                         className="field pl-7 tabular-nums"
                     />
@@ -143,16 +142,16 @@ export const RulesPanel: React.FC = () => {
                         {allValues.map((value) => <option key={value} value={value} />)}
                     </datalist>
                     <input
-                        type="number"
+                        type="text"
                         inputMode="decimal"
-                        step="0.01"
+                        autoComplete="off"
                         placeholder="+2.00"
                         aria-label={copy.changeLabel}
                         value={ruleModifier}
-                        onChange={(event) => setRuleModifier(event.target.value)}
+                        onChange={(event) => { if (isPartialDecimal(event.target.value.replace(/^\+/, ''))) setRuleModifier(event.target.value.replace(/^\+/, '')); }}
                         className="field tabular-nums"
                     />
-                    <button type="submit" aria-label={copy.addAdjustment} className="btn btn-secondary btn-icon min-h-11 w-11" disabled={!ruleTarget.trim() || !ruleModifier}>
+                    <button type="submit" aria-label={copy.addAdjustment} className="btn btn-secondary btn-icon min-h-11 w-11" disabled={!ruleTarget.trim() || parseDecimal(ruleModifier) === null}>
                         <Plus />
                     </button>
                 </form>

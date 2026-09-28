@@ -11,7 +11,10 @@ import { useI18n } from '../../../components/i18n/i18n-provider';
 import { LanguageSwitcher } from '../../../components/i18n/language-switcher';
 import { cn } from '../../../lib/utils';
 
-type Mode = 'login' | 'signup';
+type Mode = 'login' | 'signup' | 'forgot';
+
+const authErrorText = (errors: Record<string, string>, error: { code?: string; message: string }) =>
+    (error.code && errors[error.code]) || errors[error.message] || error.message;
 
 export default function AuthPage() {
     const { t, href } = useI18n();
@@ -19,11 +22,15 @@ export default function AuthPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const next = safeRedirectPath(searchParams.get('next'), href('/workspace'));
-    const [mode, setMode] = useState<Mode>(searchParams.get('mode') === 'signup' ? 'signup' : 'login');
+    const linkError = searchParams.get('error');
+    const linkFailed = linkError === 'link';
+    const [mode, setMode] = useState<Mode>(linkFailed ? 'forgot' : searchParams.get('mode') === 'signup' ? 'signup' : 'login');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
-    const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
+    const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(
+        linkFailed ? { tone: 'error', text: copy.linkExpired } : linkError === 'confirm' ? { tone: 'error', text: copy.confirmLink } : null,
+    );
     const [busy, setBusy] = useState(false);
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -37,16 +44,31 @@ export default function AuthPage() {
         }
 
         setBusy(true);
+        const callbackUrl = (nextPath: string) => `${window.location.origin}${href('/auth/callback')}?next=${encodeURIComponent(nextPath)}`;
+
+        if (mode === 'forgot') {
+            const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: callbackUrl(href('/auth/reset')) });
+            setBusy(false);
+            // Same message whether or not the account exists, so the form cannot be used to look up emails.
+            setMessage(error && error.code?.startsWith('over_') ? { tone: 'error', text: authErrorText(copy.errors, error) } : { tone: 'success', text: copy.resetSent });
+            return;
+        }
+
         const result = mode === 'login'
             ? await supabase.auth.signInWithPassword({ email, password })
             : await supabase.auth.signUp({
                 email,
                 password,
-                options: { emailRedirectTo: `${window.location.origin}${href('/auth/callback')}?next=${encodeURIComponent(next)}` },
+                options: { emailRedirectTo: callbackUrl(next) },
             });
 
         if (result.error) {
-            setMessage({ tone: 'error', text: copy.errors[result.error.message] ?? result.error.message });
+            setMessage({ tone: 'error', text: authErrorText(copy.errors, result.error) });
+            setBusy(false);
+        } else if (mode === 'signup' && !result.data.session && result.data.user?.identities?.length === 0) {
+            // Supabase answers a sign-up for an existing email with an empty identity list instead of an error.
+            setMode('login');
+            setMessage({ tone: 'error', text: copy.accountExists });
             setBusy(false);
         } else if (mode === 'signup' && !result.data.session) {
             setMessage({ tone: 'success', text: copy.confirmEmail });
@@ -97,10 +119,10 @@ export default function AuthPage() {
 
                 <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-10">
                     <div className="animate-rise">
-                        <h1 className="text-3xl font-semibold tracking-tight text-ink">{mode === 'login' ? copy.welcome : copy.create}</h1>
-                        <p className="mt-2 text-[15px] text-ink-2">{mode === 'login' ? copy.welcomeSub : copy.createSub}</p>
+                        <h1 className="text-3xl font-semibold tracking-tight text-ink">{mode === 'login' ? copy.welcome : mode === 'signup' ? copy.create : copy.forgotTitle}</h1>
+                        <p className="mt-2 text-[15px] text-ink-2">{mode === 'login' ? copy.welcomeSub : mode === 'signup' ? copy.createSub : copy.forgotSub}</p>
 
-                        <div role="tablist" aria-label={copy.tabsLabel} className="mt-8 grid grid-cols-2 rounded-xl bg-surface-2 p-1">
+                        {mode !== 'forgot' && <div role="tablist" aria-label={copy.tabsLabel} className="mt-8 grid grid-cols-2 rounded-xl bg-surface-2 p-1">
                             {(['login', 'signup'] as Mode[]).map((value) => (
                                 <button
                                     key={value}
@@ -116,15 +138,20 @@ export default function AuthPage() {
                                     {value === 'login' ? copy.tabSignIn : copy.tabCreate}
                                 </button>
                             ))}
-                        </div>
+                        </div>}
 
                         <form onSubmit={handleSubmit} className="mt-6 space-y-5">
                             <div>
                                 <label htmlFor="email" className="label">{copy.email}</label>
                                 <input id="email" type="email" required autoComplete="email" inputMode="email" value={email} onChange={(event) => setEmail(event.target.value)} className="field" placeholder={copy.emailPlaceholder} />
                             </div>
-                            <div>
-                                <label htmlFor="password" className="label">{copy.password}</label>
+                            {mode !== 'forgot' && <div>
+                                <div className="flex items-baseline justify-between gap-3">
+                                    <label htmlFor="password" className="label">{copy.password}</label>
+                                    {mode === 'login' && (
+                                        <button type="button" onClick={() => switchMode('forgot')} className="mb-1.5 text-xs font-medium text-brand underline-offset-2 hover:underline">{copy.forgot}</button>
+                                    )}
+                                </div>
                                 <div className="relative">
                                     <input
                                         id="password"
@@ -146,7 +173,7 @@ export default function AuthPage() {
                                         {showPassword ? <EyeOff /> : <Eye />}
                                     </button>
                                 </div>
-                            </div>
+                            </div>}
 
                             {message && (
                                 <p
@@ -159,8 +186,11 @@ export default function AuthPage() {
 
                             <button type="submit" disabled={busy} className="btn btn-primary btn-lg w-full">
                                 {busy && <Loader2 className="animate-spin" />}
-                                {mode === 'login' ? copy.submitLogin : copy.submitSignup}
+                                {mode === 'login' ? copy.submitLogin : mode === 'signup' ? copy.submitSignup : copy.sendReset}
                             </button>
+                            {mode === 'forgot' && (
+                                <button type="button" onClick={() => switchMode('login')} className="btn btn-ghost w-full"><ArrowLeft /> {copy.backToSignIn}</button>
+                            )}
                         </form>
 
                         <p className="mt-8 text-center text-xs leading-relaxed text-ink-3">

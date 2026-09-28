@@ -1,5 +1,5 @@
 import { InternalVariant, OptionGroup, PriceModifierRule, SkuTemplateConfig } from '../../types';
-import { slugify, toCsv } from '../csv';
+import { activeOptionGroups, slugify, toCsv } from '../csv';
 
 export interface CatalogExportInput {
     productTitle: string;
@@ -24,7 +24,8 @@ export function convertCatalogToShopifyCsv(catalog: CatalogExportInput): string 
     // slugify strips accents, so "Chaussure été" becomes "chaussure-ete" rather than "chaussure-t".
     const handle = slugify(catalog.productTitle, 'product-handle');
 
-    const optionGroups = catalog.options.filter(opt => opt.name.trim() !== '' && opt.values.length > 0);
+    // Trimmed names match the variant attribute keys, so " Size " still exports its values.
+    const optionGroups = activeOptionGroups(catalog);
 
     const rows = catalog.variants.map((variant, index) => {
         const opt1Name = optionGroups[0]?.name || '';

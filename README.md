@@ -14,6 +14,8 @@ npm run dev
 
 Open http://localhost:3000 (English) or http://localhost:3000/fr (French).
 
+Run the test suite (domain logic, importer, exporters, plans and the catalog store) with `npm test`.
+
 ## Environment variables
 
 | Variable | Purpose |
