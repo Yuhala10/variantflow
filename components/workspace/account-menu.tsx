@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useRef, useState } from 'react';
-import { CalendarPlus, ChevronDown, CreditCard, Home, Languages, LogOut, UserRound } from 'lucide-react';
+import { CalendarPlus, ChevronDown, CreditCard, Home, Inbox, Languages, LogOut, UserRound } from 'lucide-react';
 import { nextTier } from '../../lib/entitlements';
 import { createSupabaseBrowserClient } from '../../lib/supabase/client';
 import { localePath, stripLocale } from '../../lib/i18n';
@@ -78,6 +78,11 @@ export function AccountMenu({ email, access, onUpgrade, onExtend }: { email: str
                         <button type="button" role="menuitem" onClick={switchLanguage} className={itemClass}>
                             <Languages className="h-4 w-4" /> {t.common.languageNames[otherLocale]}
                         </button>
+                        {access.role && (
+                            <Link href={href('/workspace/feedback')} role="menuitem" className={itemClass}>
+                                <Inbox className="h-4 w-4" /> {copy.feedbackInbox}
+                            </Link>
+                        )}
                         <Link href={href('/')} role="menuitem" className={itemClass}>
                             <Home className="h-4 w-4" /> {copy.homePage}
                         </Link>

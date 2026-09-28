@@ -21,7 +21,7 @@ Run the test suite (domain logic, importer, exporters, plans and the catalog sto
 | Variable | Purpose |
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase project (browser-safe) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server only: payment webhook and row-run metering |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server only: payment webhook, row-run metering, instant sign-up and the feedback inbox |
 | `PAYMENTO_SECRET_KEY` | Server only: verifies payment tokens with Paymento |
 | `NEXT_PUBLIC_PAYMENTO_PRO_LINK`, `NEXT_PUBLIC_PAYMENTO_SCALE_LINK` | Hosted checkout links |
 | `NEXT_PUBLIC_SITE_URL` | Canonical domain (defaults to `https://variantflow-omega.vercel.app`) |
@@ -34,6 +34,7 @@ Run the migrations in `supabase/migrations/` in order in the Supabase SQL editor
 1. `001_initial.sql` — profiles, projects, subscriptions, usage, payments (with row-level security)
 2. `002_owner_access_and_hardening.sql` — owner/admin roles, locked profile emails, one-time payment tokens
 3. `003_usage_metering.sql` — atomic monthly row-run metering
+4. `004_feedback.sql` — in-app feedback, read by owners/admins at `/workspace/feedback`
 
 ### Granting owner access
 
@@ -64,3 +65,9 @@ A row-run is one variant row exported or one supplier row imported.
 ## Languages
 
 English is served without a prefix (`/pricing`), French under `/fr` (`/fr/pricing`). All text lives in `lib/i18n/dictionaries/`; `fr.ts` is type-checked against `en.ts`, so a missing translation fails the build.
+
+## Sign-up and feedback
+
+New accounts are created already confirmed (`/api/auth/signup`, service role), so people go straight from “Create account” to their workspace with no confirmation email to open. Without `SUPABASE_SERVICE_ROLE_KEY` the app falls back to Supabase’s standard email-confirmation sign-up. Password resets need `<your domain>/auth/reset` and `<your domain>/fr/auth/reset` allowed under Supabase → Authentication → URL Configuration → Redirect URLs (a wildcard such as `https://your-domain/**` covers both).
+
+Feedback sent from the workspace lands in the `feedback` table. Owners and admins see it at `/workspace/feedback` (also in the account menu), can reply by email and mark messages done.

@@ -6,6 +6,7 @@ import { FormEvent, useState } from 'react';
 import { ArrowLeft, Check, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '../../../lib/supabase/client';
 import { safeRedirectPath } from '../../../lib/safe-redirect';
+import { translateCode } from '../../../lib/i18n';
 import { Logo, LogoMark } from '../../../components/brand/logo';
 import { useI18n } from '../../../components/i18n/i18n-provider';
 import { LanguageSwitcher } from '../../../components/i18n/language-switcher';
@@ -52,6 +53,35 @@ export default function AuthPage() {
             // Same message whether or not the account exists, so the form cannot be used to look up emails.
             setMessage(error && error.code?.startsWith('over_') ? { tone: 'error', text: authErrorText(copy.errors, error) } : { tone: 'success', text: copy.resetSent });
             return;
+        }
+
+        if (mode === 'signup') {
+            // Instant sign-up: the server creates a confirmed account, so there is no email to open first.
+            const response = await fetch('/api/auth/signup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password }),
+            }).catch(() => null);
+            const payload = response ? await response.json().catch(() => null) : null;
+            if (response?.ok) {
+                const signIn = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+                if (!signIn.error) {
+                    router.replace(next);
+                    router.refresh();
+                    return;
+                }
+                setMode('login');
+                setMessage({ tone: 'error', text: authErrorText(copy.errors, signIn.error) });
+                setBusy(false);
+                return;
+            }
+            if (response && response.status !== 503) {
+                if (payload?.code === 'account-exists') setMode('login');
+                setMessage({ tone: 'error', text: translateCode(t.apiErrors, payload?.code, {}, t.apiErrors['server-error']()) });
+                setBusy(false);
+                return;
+            }
+            // 503 (no service key) or network failure: fall back to Supabase's standard email-confirmation sign-up below.
         }
 
         const result = mode === 'login'

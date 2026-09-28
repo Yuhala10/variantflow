@@ -15,6 +15,11 @@ export type ApiErrorCode =
     | 'import-locked'
     | 'project-limit'
     | 'not-found'
+    | 'forbidden'
+    | 'rate-limited'
+    | 'account-exists'
+    | 'weak-password'
+    | 'invalid-email'
     | 'server-error';
 
 export const apiError = (code: ApiErrorCode, status: number, error: string, extra: Record<string, unknown> = {}) =>
