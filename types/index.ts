@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 export type SubscriptionTier = 'FREE' | 'PRO' | 'SCALE';
 
 /** Structural plan data. Names, descriptions and feature lists are translated in lib/i18n/dictionaries. */
@@ -41,6 +39,8 @@ export interface AccountAccess {
     role: AccessRole | null;
     subscriptionActive: boolean;
     currentPeriodEnd: string | null;
+    /** The paid plan on record, even after it lapses, so the workspace can offer to renew it. */
+    lastPaidTier: Exclude<SubscriptionTier, 'FREE'> | null;
     entitlements: EntitlementSet;
 }
 

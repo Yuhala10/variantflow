@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, Lightbulb, Sparkles } from 'lucide-react';
-import { ValidationError } from '../../types';
+import { BILLING_PLANS, ValidationError } from '../../types';
 import { translateCode } from '../../lib/i18n';
 import { useI18n } from '../i18n/i18n-provider';
 import { cn } from '../../lib/utils';
@@ -77,7 +77,14 @@ export function ValidationSummary(props: ValidationSummaryProps) {
                 <div className="card px-4 py-3.5">
                     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm">
                         <span className="text-ink-2">{copy.rowRunsUsed({ used: formatNumber(rowRunsUsed), limit: formatNumber(rowRunLimit) })}</span>
-                        <span className="text-xs text-ink-3">{copy.rowRunsReset}</span>
+                        {/* Only Pro has a bigger plan to move to; offer it once most of the allowance is gone. */}
+                        {canUpgrade && rowRunsUsed >= rowRunLimit * 0.8 ? (
+                            <button type="button" onClick={onUpgrade} className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-brand hover:underline">
+                                <Sparkles className="h-3.5 w-3.5" /> {copy.moreRowRuns({ limit: formatNumber(BILLING_PLANS.SCALE.rowRunLimit ?? 0) })}
+                            </button>
+                        ) : (
+                            <span className="text-xs text-ink-3">{copy.rowRunsReset}</span>
+                        )}
                     </div>
                     <Meter value={rowRunsUsed} max={rowRunLimit} label={copy.rowRuns} danger={rowRunsUsed >= rowRunLimit} />
                 </div>

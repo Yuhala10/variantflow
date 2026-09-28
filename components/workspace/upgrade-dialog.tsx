@@ -3,27 +3,53 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Dialog } from '@base-ui/react/dialog';
-import { ArrowUpRight, Check, Loader2, RefreshCw, X } from 'lucide-react';
-import { BILLING_PLANS, SubscriptionTier } from '../../types';
+import { ArrowUpRight, Check, Copy, Loader2, RefreshCw, X } from 'lucide-react';
+import { AccountAccess, BILLING_PLANS, SubscriptionTier } from '../../types';
 import { useI18n } from '../i18n/i18n-provider';
 import { cn } from '../../lib/utils';
 
 interface UpgradeDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    /** Plan selected when the dialog opens: the next plan up, or the current one to extend it. */
+    initialTier: SubscriptionTier;
+    access: AccountAccess;
+    /** Payments are matched to accounts by email, so the customer must pay with this one. */
+    email: string | null;
     onRefreshAccess: () => Promise<boolean>;
     onError: (message: string) => void;
 }
 
 const PAID_TIERS: SubscriptionTier[] = ['PRO', 'SCALE'];
 
-export function UpgradeDialog({ open, onOpenChange, onRefreshAccess, onError }: UpgradeDialogProps) {
-    const { t, href, locale } = useI18n();
+export function UpgradeDialog({ open, onOpenChange, initialTier, access, email, onRefreshAccess, onError }: UpgradeDialogProps) {
+    const { t, href, locale, formatDate } = useI18n();
     const copy = t.workspace.upgradeDialog;
-    const [selectedTier, setSelectedTier] = useState<SubscriptionTier>('PRO');
+    const [selectedTier, setSelectedTier] = useState<SubscriptionTier>(initialTier);
     const [checkoutOpened, setCheckoutOpened] = useState(false);
     const [busy, setBusy] = useState<'checkout' | 'refresh' | null>(null);
+    const [copied, setCopied] = useState(false);
+    // Each time the dialog opens, start from the plan the caller suggested.
+    const [openedFor, setOpenedFor] = useState<SubscriptionTier | null>(open ? initialTier : null);
+    if (open && openedFor !== initialTier) {
+        setOpenedFor(initialTier);
+        setSelectedTier(initialTier);
+        setCheckoutOpened(false);
+    } else if (!open && openedFor !== null) {
+        setOpenedFor(null);
+    }
     const plan = BILLING_PLANS[selectedTier];
+    const activeTier = access.subscriptionActive && !access.role && access.tier !== 'FREE' ? access.tier : null;
+    const extending = activeTier === selectedTier;
+
+    const copyEmail = async () => {
+        if (!email) return;
+        try {
+            await navigator.clipboard.writeText(email);
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 2000);
+        } catch { /* clipboard unavailable; the email is still visible */ }
+    };
     const money = (amount: number) => (locale === 'fr' ? `${amount} $` : `$${amount}`);
 
     const startCheckout = async () => {
@@ -99,8 +125,11 @@ export function UpgradeDialog({ open, onOpenChange, onRefreshAccess, onError }: 
                                         onClick={() => { setSelectedTier(tierId); setCheckoutOpened(false); }}
                                         className={cn('relative rounded-2xl border p-5 text-left transition-all duration-200', selected ? 'border-brand bg-brand-soft/60 shadow-md ring-1 ring-brand' : 'border-line bg-surface hover:border-line-strong')}
                                     >
-                                        <span className="flex items-center justify-between">
-                                            <span className="text-base font-semibold text-ink">{t.plans[tierId].name}</span>
+                                        <span className="flex items-center justify-between gap-2">
+                                            <span className="flex items-center gap-2 text-base font-semibold text-ink">
+                                                {t.plans[tierId].name}
+                                                {activeTier === tierId && <span className="chip bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-ink-2">{copy.currentPlan}</span>}
+                                            </span>
                                             <span className={cn('inline-flex h-5 w-5 items-center justify-center rounded-full border transition-colors', selected ? 'border-brand bg-brand text-on-brand' : 'border-line-strong')}>
                                                 {selected && <Check className="h-3 w-3" />}
                                             </span>
@@ -123,10 +152,26 @@ export function UpgradeDialog({ open, onOpenChange, onRefreshAccess, onError }: 
                             ))}
                         </ul>
 
+                        {activeTier && access.currentPeriodEnd && (
+                            <p className="mt-5 text-sm leading-relaxed text-ink-2">{copy.stacking({ date: formatDate(access.currentPeriodEnd) })}</p>
+                        )}
+
+                        {email && (
+                            <div className="mt-5 flex items-center gap-3 rounded-2xl border border-brand/30 bg-brand-soft/40 px-4 py-3">
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-medium text-ink-2">{copy.payWithEmail}</p>
+                                    <p className="truncate text-sm font-semibold text-ink">{email}</p>
+                                </div>
+                                <button type="button" onClick={copyEmail} className="btn btn-secondary btn-sm shrink-0">
+                                    {copied ? <Check /> : <Copy />} {copied ? copy.copied : copy.copy}
+                                </button>
+                            </div>
+                        )}
+
                         <div className="mt-6 space-y-3">
                             <button type="button" onClick={startCheckout} disabled={busy !== null} className="btn btn-primary btn-lg w-full whitespace-normal">
                                 {busy === 'checkout' ? <Loader2 className="animate-spin" /> : <ArrowUpRight />}
-                                {copy.continue({ price: plan.priceUsdt })}
+                                {extending ? copy.extend({ price: plan.priceUsdt }) : copy.continue({ price: plan.priceUsdt })}
                             </button>
                             {checkoutOpened && (
                                 <button type="button" onClick={refresh} disabled={busy !== null} className="btn btn-secondary btn-lg animate-rise w-full">

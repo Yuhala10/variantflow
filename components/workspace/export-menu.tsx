@@ -16,7 +16,10 @@ interface ExportMenuProps {
 
 const FORMATS: ExportPlatform[] = ['shopify', 'woocommerce', 'universal'];
 
-/** Primary button exports Shopify; the chevron opens the other formats (Scale). */
+/**
+ * Primary button exports Shopify; the chevron opens the other formats (Scale).
+ * A catalog over the plan's limit stays clickable so the click can offer the upgrade.
+ */
 export function ExportMenu({ exporting, blocked, multiPlatform, onExport, onLocked }: ExportMenuProps) {
     const { t } = useI18n();
     const copy = t.workspace.exportMenu;
@@ -30,18 +33,18 @@ export function ExportMenu({ exporting, blocked, multiPlatform, onExport, onLock
             <button
                 type="button"
                 onClick={() => onExport('shopify')}
-                disabled={exporting || blocked}
+                disabled={exporting}
                 title={blocked ? t.workspace.exportBlocked : copy.formats.shopify.description}
                 className="btn btn-primary btn-sm rounded-r-none"
             >
-                {exporting ? <Loader2 className="animate-spin" /> : <Download />}
+                {exporting ? <Loader2 className="animate-spin" /> : blocked ? <Lock /> : <Download />}
                 <span className="hidden sm:inline">{t.workspace.exportCsv}</span>
                 <span className="sm:hidden">{t.workspace.export}</span>
             </button>
             <button
                 type="button"
                 onClick={() => setOpen((value) => !value)}
-                disabled={exporting || blocked}
+                disabled={exporting}
                 aria-expanded={open}
                 aria-haspopup="menu"
                 aria-label={copy.more}

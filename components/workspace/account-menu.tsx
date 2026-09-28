@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useCallback, useRef, useState } from 'react';
-import { ChevronDown, CreditCard, Home, Languages, LogOut, UserRound } from 'lucide-react';
+import { CalendarPlus, ChevronDown, CreditCard, Home, Languages, LogOut, UserRound } from 'lucide-react';
+import { nextTier } from '../../lib/entitlements';
 import { createSupabaseBrowserClient } from '../../lib/supabase/client';
 import { localePath, stripLocale } from '../../lib/i18n';
 import { AccountAccess } from '../../types';
@@ -11,7 +12,7 @@ import { rememberLocale } from '../i18n/language-switcher';
 import { PlanBadge } from './plan-badge';
 import { useDismiss } from './use-dismiss';
 
-export function AccountMenu({ email, access, onUpgrade }: { email: string | null; access: AccountAccess; onUpgrade: () => void }) {
+export function AccountMenu({ email, access, onUpgrade, onExtend }: { email: string | null; access: AccountAccess; onUpgrade: () => void; onExtend: () => void }) {
     const { t, href, locale, formatDate } = useI18n();
     const copy = t.workspace.account;
     const [open, setOpen] = useState(false);
@@ -36,7 +37,8 @@ export function AccountMenu({ email, access, onUpgrade }: { email: string | null
         window.location.assign(localePath(otherLocale, stripLocale(window.location.pathname)));
     };
 
-    const isFree = !access.role && access.tier === 'FREE';
+    const upgradeTarget = nextTier(access);
+    const isPaid = !access.role && access.tier !== 'FREE';
     const itemClass = 'flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-sm text-ink-2 hover:bg-surface-2 hover:text-ink';
 
     return (
@@ -63,9 +65,14 @@ export function AccountMenu({ email, access, onUpgrade }: { email: string | null
                         )}
                     </div>
                     <div className="p-1.5">
-                        {isFree && (
+                        {upgradeTarget && (
                             <button type="button" role="menuitem" onClick={() => { setOpen(false); onUpgrade(); }} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-brand-ink hover:bg-brand-soft">
-                                <CreditCard className="h-4 w-4" /> {copy.upgradePlan}
+                                <CreditCard className="h-4 w-4" /> {upgradeTarget === 'SCALE' ? copy.upgradeToScale : copy.upgradePlan}
+                            </button>
+                        )}
+                        {isPaid && (
+                            <button type="button" role="menuitem" onClick={() => { setOpen(false); onExtend(); }} className={itemClass}>
+                                <CalendarPlus className="h-4 w-4" /> {copy.extendPlan}
                             </button>
                         )}
                         <button type="button" role="menuitem" onClick={switchLanguage} className={itemClass}>
