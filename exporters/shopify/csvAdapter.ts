@@ -1,4 +1,5 @@
 import { InternalVariant, OptionGroup, PriceModifierRule, SkuTemplateConfig } from '../../types';
+import { activeOptionGroups, slugify, toCsv } from '../csv';
 
 export interface CatalogExportInput {
     productTitle: string;
@@ -20,12 +21,11 @@ export function convertCatalogToShopifyCsv(catalog: CatalogExportInput): string 
         'SEO Title', 'SEO Description', 'Google Shopping / Google Product Category', 'Variant Image', 'Status'
     ];
 
-    const handle = catalog.productTitle
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/(^-|-$)/g, '') || 'product-handle';
+    // slugify strips accents, so "Chaussure été" becomes "chaussure-ete" rather than "chaussure-t".
+    const handle = slugify(catalog.productTitle, 'product-handle');
 
-    const optionGroups = catalog.options.filter(opt => opt.name.trim() !== '' && opt.values.length > 0);
+    // Trimmed names match the variant attribute keys, so " Size " still exports its values.
+    const optionGroups = activeOptionGroups(catalog);
 
     const rows = catalog.variants.map((variant, index) => {
         const opt1Name = optionGroups[0]?.name || '';
@@ -41,7 +41,8 @@ export function convertCatalogToShopifyCsv(catalog: CatalogExportInput): string 
             handle,
             index === 0 ? catalog.productTitle.trim() : '',
             '',
-            'VariantFlow Merchant',
+            // Left empty so Shopify uses the merchant's own store name, never ours.
+            '',
             '', '', '', 'True',
             opt1Name, opt1Value,
             opt2Name, opt2Value,
@@ -53,16 +54,8 @@ export function convertCatalogToShopifyCsv(catalog: CatalogExportInput): string 
             '', '', '', '', 'active'
         ];
 
-        return columns
-            .map(field => {
-                const str = field ? field.toString() : '';
-                if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-                    return `"${str.replace(/"/g, '""')}"`;
-                }
-                return str;
-            })
-            .join(',');
+        return columns;
     });
 
-    return [headers.join(','), ...rows].join('\n');
+    return toCsv([headers, ...rows]);
 }

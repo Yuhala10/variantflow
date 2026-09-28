@@ -11,6 +11,7 @@ import { WorkspaceHeader, type SaveState } from '../../../components/workspace/w
 import { ValidationSummary } from '../../../components/workspace/validation-summary';
 import { MobileTabs, type WorkspaceTab } from '../../../components/workspace/mobile-tabs';
 import { UpgradeDialog } from '../../../components/workspace/upgrade-dialog';
+import { RenewalBanner } from '../../../components/workspace/renewal-banner';
 import { Notice, useNotice } from '../../../components/workspace/notice';
 import { LogoMark } from '../../../components/brand/logo';
 import { useI18n } from '../../../components/i18n/i18n-provider';
@@ -18,9 +19,9 @@ import { validateProductData } from '../../../domain/validation/validateProduct'
 import type { ImportedCatalog } from '../../../domain/import/importCatalog';
 import { EXPORT_PLATFORMS, type ExportPlatform } from '../../../exporters';
 import { isSupabaseConfigured } from '../../../lib/supabase/config';
-import { isWithinLimit } from '../../../lib/entitlements';
+import { isWithinLimit, nextTier, renewalState } from '../../../lib/entitlements';
 import { translateCode } from '../../../lib/i18n';
-import type { AccountAccess } from '../../../types';
+import type { AccountAccess, SubscriptionTier } from '../../../types';
 import { cn } from '../../../lib/utils';
 
 interface Project {
@@ -37,7 +38,7 @@ interface PendingSave {
     session: number;
 }
 
-const EMPTY_CATALOG: CatalogSnapshot = { productTitle: '', options: [], skuConfig: { pattern: '' }, basePrice: 0, priceRules: [], overrides: {} };
+const EMPTY_CATALOG: CatalogSnapshot = { productTitle: '', options: [], skuConfig: { pattern: '' }, basePrice: 0, priceRules: [], overrides: {}, excluded: [] };
 
 const newId = () => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
 
@@ -99,6 +100,7 @@ export default function WorkspacePage() {
     const [saveState, setSaveState] = useState<SaveState>('idle');
     const [tab, setTab] = useState<WorkspaceTab>('build');
     const [upgradeOpen, setUpgradeOpen] = useState(false);
+    const [upgradeTier, setUpgradeTier] = useState<SubscriptionTier>('PRO');
     const [exporting, setExporting] = useState(false);
     const [projects, setProjects] = useState<Project[]>([]);
     const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
@@ -246,13 +248,31 @@ export default function WorkspacePage() {
     const isEmpty = !store.productTitle.trim() && store.options.length === 0;
     const variantLimit = entitlements.maxVariantsPerProject;
     const withinLimit = isWithinLimit(variantLimit, store.variants.length);
-    const canUpgrade = !access.role && access.tier === 'FREE';
+    const upgradeTarget = nextTier(access);
+    const canUpgrade = upgradeTarget !== null;
+    const renewal = renewalState(access);
+    /** Opens checkout on the given plan, or the next plan up (the lapsed plan for returning customers). */
+    const openUpgrade = (tier?: SubscriptionTier) => {
+        setUpgradeTier(tier ?? (renewal?.kind === 'lapsed' ? renewal.tier : upgradeTarget) ?? access.lastPaidTier ?? 'PRO');
+        setUpgradeOpen(true);
+    };
     const canCreateProject = entitlements.maxProjects === null || projects.length < entitlements.maxProjects;
 
     const handleExport = async (platform: ExportPlatform) => {
+        // The moment a catalog outgrows Free is the moment it is worth paying for: offer the upgrade
+        // (before asking them to fix rows they could not export anyway), not a disabled button.
+        if (!withinLimit) {
+            show('error', t.apiErrors['variant-limit']({ limit: variantLimit ?? '' }));
+            if (canUpgrade) openUpgrade();
+            return;
+        }
         if (isEmpty || errors.length > 0) {
             setTab('variants');
             show('error', isEmpty ? t.workspace.notices.addBeforeExport : t.workspace.notices.fixBeforeExport);
+            return;
+        }
+        if (EXPORT_PLATFORMS[platform].multiPlatform && !entitlements.canUseMultiPlatformExport) {
+            openUpgrade('SCALE');
             return;
         }
         const formatName = t.workspace.exportMenu.formats[platform].name;
@@ -283,7 +303,8 @@ export default function WorkspacePage() {
             if (!response.ok) {
                 const payload = await response.json().catch(() => null);
                 show('error', apiMessage(payload, t.workspace.notices.exportFailed));
-                if (canUpgrade && ['variant-limit', 'platform-locked'].includes(payload?.code)) setUpgradeOpen(true);
+                if (payload?.code === 'platform-locked') openUpgrade('SCALE');
+                else if (canUpgrade && ['variant-limit', 'row-runs-exhausted'].includes(payload?.code)) openUpgrade();
                 return;
             }
 
@@ -324,6 +345,7 @@ export default function WorkspacePage() {
             basePrice: catalog.basePrice,
             priceRules: [],
             overrides: catalog.overrides,
+            excluded: catalog.excluded,
         });
         show('success', t.workspace.tools.imported({ variants: useProductStore.getState().variants.length }));
         setTab('variants');
@@ -340,7 +362,7 @@ export default function WorkspacePage() {
     const createProject = async () => {
         if (!canCreateProject) {
             show('error', t.workspace.projects.limit);
-            if (canUpgrade) setUpgradeOpen(true);
+            if (canUpgrade) openUpgrade();
             return;
         }
         await flushPendingSave();
@@ -353,7 +375,7 @@ export default function WorkspacePage() {
             const payload = await response.json().catch(() => null);
             if (!response.ok || !payload?.project) {
                 show('error', apiMessage(payload, t.apiErrors['server-error']()));
-                if (payload?.code === 'project-limit' && canUpgrade) setUpgradeOpen(true);
+                if (payload?.code === 'project-limit' && canUpgrade) openUpgrade();
                 return;
             }
             setProjects((list) => [payload.project, ...list]);
@@ -387,8 +409,11 @@ export default function WorkspacePage() {
     };
 
     const refreshAccess = async () => {
+        const before = useProductStore.getState().access;
         const next = await loadAccess().catch(() => null);
-        const upgraded = !!next && (next.role !== null || next.tier !== 'FREE');
+        // Paid customers can buy too (upgrade or add 30 days), so success means the plan changed, not merely "not Free".
+        const endOf = (value: AccountAccess) => (value.currentPeriodEnd ? Date.parse(value.currentPeriodEnd) : 0);
+        const upgraded = !!next && ((next.role !== null && before.role === null) || next.tier !== before.tier || endOf(next) > endOf(before));
         if (upgraded) show('success', t.workspace.upgradeDialog.active);
         return upgraded;
     };
@@ -409,7 +434,9 @@ export default function WorkspacePage() {
                 currentProjectId={currentProjectId}
                 canCreateProject={canCreateProject}
                 onExport={handleExport}
-                onUpgrade={() => setUpgradeOpen(true)}
+                onUpgrade={() => openUpgrade()}
+                onUnlockPlatforms={() => openUpgrade('SCALE')}
+                onExtend={() => openUpgrade(access.tier)}
                 onSelectProject={selectProject}
                 onCreateProject={createProject}
                 onDeleteProject={deleteProject}
@@ -427,13 +454,14 @@ export default function WorkspacePage() {
                         </Panel>
                         <Panel id="tools" step={3} title={panels.tools.title} description={panels.tools.description} className={panelVisibility('tools')}>
                             <div className="space-y-8">
-                                <ImportPanel onUpgrade={() => setUpgradeOpen(true)} onImport={handleImport} onError={(message) => show('error', message)} />
+                                <ImportPanel onUpgrade={() => openUpgrade()} onImport={handleImport} onError={(message) => show('error', message)} />
                                 <div className="border-t border-line pt-7"><FeedbackForm /></div>
                             </div>
                         </Panel>
                     </div>
 
                     <div className={cn('min-w-0 space-y-5', panelVisibility('variants'))}>
+                        {renewal && <RenewalBanner state={renewal} onRenew={() => openUpgrade(renewal.tier)} />}
                         <ValidationSummary
                             errors={errors}
                             warnings={warnings}
@@ -444,7 +472,7 @@ export default function WorkspacePage() {
                             rowRunsUsed={rowRunsUsed}
                             rowRunLimit={entitlements.monthlyRowRuns}
                             canUpgrade={canUpgrade}
-                            onUpgrade={() => setUpgradeOpen(true)}
+                            onUpgrade={() => openUpgrade()}
                         />
                         <VariantTable />
                     </div>
@@ -452,7 +480,7 @@ export default function WorkspacePage() {
             </main>
 
             <MobileTabs active={tab} onChange={setTab} variantCount={store.variants.length} issueCount={errors.length} />
-            <UpgradeDialog open={upgradeOpen} onOpenChange={setUpgradeOpen} onRefreshAccess={refreshAccess} onError={(message) => show('error', message)} />
+            <UpgradeDialog open={upgradeOpen} onOpenChange={setUpgradeOpen} initialTier={upgradeTier} access={access} email={email} onRefreshAccess={refreshAccess} onError={(message) => show('error', message)} />
             <Notice notice={notice} onDismiss={dismiss} />
         </div>
     );

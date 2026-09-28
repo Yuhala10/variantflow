@@ -3,7 +3,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { FileUp, Loader2, Lock, RotateCcw, Sparkles, Wand2 } from 'lucide-react';
 import { useProductStore } from '../../store/productStore';
-import { buildCatalogFromRows, parseCsv, suggestMapping, type ColumnMapping, type ColumnRole, type ImportedCatalog, type ParsedCsv } from '../../domain/import/importCatalog';
+import { buildCatalogFromRows, listProducts, parseCsv, resolveProduct, suggestMapping, type ColumnMapping, type ColumnRole, type ImportedCatalog, type ParsedCsv } from '../../domain/import/importCatalog';
 import { useI18n } from '../i18n/i18n-provider';
 import { cn } from '../../lib/utils';
 
@@ -49,13 +49,17 @@ export function ImportPanel({ onUpgrade, onImport, onError }: ImportPanelProps) 
     const [clean, setClean] = useState(true);
     const [normalize, setNormalize] = useState(false);
     const [importing, setImporting] = useState(false);
+    /** undefined = decide automatically, null = every row as one product. */
+    const [product, setProduct] = useState<string | null | undefined>(undefined);
 
     const smart = entitlements.canUseAiMapping;
     const canNormalize = entitlements.canNormalizeSuppliers;
 
+    const products = useMemo(() => (parsed ? listProducts(parsed.rows, mapping) : []), [parsed, mapping]);
+    const selectedProduct = resolveProduct(products, product);
     const preview = useMemo(
-        () => (parsed ? buildCatalogFromRows(parsed.rows, mapping, { clean: clean && entitlements.canTransformCatalog, normalize: normalize && canNormalize }) : null),
-        [parsed, mapping, clean, normalize, entitlements.canTransformCatalog, canNormalize],
+        () => (parsed ? buildCatalogFromRows(parsed.rows, mapping, { clean: clean && entitlements.canTransformCatalog, normalize: normalize && canNormalize, product }) : null),
+        [parsed, mapping, clean, normalize, entitlements.canTransformCatalog, canNormalize, product],
     );
 
     if (!entitlements.canImportCsv) {
@@ -80,6 +84,7 @@ export function ImportPanel({ onUpgrade, onImport, onError }: ImportPanelProps) 
             return;
         }
         setParsed(result);
+        setProduct(undefined);
         setMapping(suggestMapping(result, smart));
         setNormalize(canNormalize);
     };
@@ -113,6 +118,7 @@ export function ImportPanel({ onUpgrade, onImport, onError }: ImportPanelProps) 
 
     const reset = () => {
         setParsed(null);
+        setProduct(undefined);
         setMapping({});
         setCsvText('');
     };
@@ -120,7 +126,8 @@ export function ImportPanel({ onUpgrade, onImport, onError }: ImportPanelProps) 
     const runImport = async () => {
         if (!parsed || !preview || preview.options.length === 0) return;
         setImporting(true);
-        const ok = await onImport(preview, parsed.rows.length);
+        // Only the selected product's rows are imported, so only those are metered.
+        const ok = await onImport(preview, preview.stats.rows);
         setImporting(false);
         if (ok) reset();
     };
@@ -202,6 +209,24 @@ export function ImportPanel({ onUpgrade, onImport, onError }: ImportPanelProps) 
                         </ul>
                     </div>
 
+                    {products.length > 1 && (
+                        <div>
+                            <label htmlFor="import-product" className="mb-1 block text-xs font-semibold text-ink-3">{copy.productLabel}</label>
+                            <select
+                                id="import-product"
+                                value={selectedProduct ?? ''}
+                                onChange={(event) => setProduct(event.target.value || null)}
+                                className="field field-sm"
+                            >
+                                {products.map((entry) => (
+                                    <option key={entry.title} value={entry.title}>{copy.productOption({ title: entry.title, rows: formatNumber(entry.rows) })}</option>
+                                ))}
+                                <option value="">{copy.allRows}</option>
+                            </select>
+                            <p className="mt-1.5 text-xs text-ink-3">{copy.productsFound({ count: formatNumber(products.length) })}</p>
+                        </div>
+                    )}
+
                     <div className="space-y-2">
                         {entitlements.canTransformCatalog && (
                             <Toggle checked={clean} onChange={setClean} label={copy.cleanToggle} hint={copy.cleanHint} />
@@ -239,6 +264,9 @@ export function ImportPanel({ onUpgrade, onImport, onError }: ImportPanelProps) 
                                         <span>{copy.previewBase({ price: money(preview.basePrice) })}</span>
                                         <span>{copy.previewRows({ imported: formatNumber(preview.stats.imported), skipped: formatNumber(preview.stats.skipped) })}</span>
                                     </p>
+                                    {preview.excluded.length > 0 && (
+                                        <p className="text-xs text-ink-3">{copy.previewMissing({ count: formatNumber(preview.excluded.length) })}</p>
+                                    )}
                                     {preview.stats.droppedOptions.length > 0 && (
                                         <p className="text-xs text-warn">{copy.dropped({ names: preview.stats.droppedOptions.join(', ') })}</p>
                                     )}
@@ -250,7 +278,7 @@ export function ImportPanel({ onUpgrade, onImport, onError }: ImportPanelProps) 
                     <p className="text-xs text-ink-3">{copy.replaceWarning}</p>
                     <button type="button" onClick={runImport} disabled={importing || !preview || preview.options.length === 0} className="btn btn-primary w-full">
                         {importing ? <Loader2 className="animate-spin" /> : <Wand2 />}
-                        {copy.importButton({ rows: formatNumber(parsed.rows.length) })}
+                        {copy.importButton({ rows: formatNumber(preview?.stats.rows ?? parsed.rows.length) })}
                     </button>
                 </div>
             )}

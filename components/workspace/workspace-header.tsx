@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Check, CloudOff, Loader2, Sparkles } from 'lucide-react';
 import { LogoMark } from '../brand/logo';
 import { AccountAccess } from '../../types';
+import { nextTier } from '../../lib/entitlements';
 import type { ExportPlatform } from '../../exporters';
 import { useI18n } from '../i18n/i18n-provider';
 import { AccountMenu } from './account-menu';
@@ -25,6 +26,8 @@ interface WorkspaceHeaderProps {
     canCreateProject: boolean;
     onExport: (platform: ExportPlatform) => void;
     onUpgrade: () => void;
+    onUnlockPlatforms: () => void;
+    onExtend: () => void;
     onSelectProject: (id: string) => void;
     onCreateProject: () => void;
     onDeleteProject: (id: string) => void;
@@ -44,7 +47,7 @@ function SaveIndicator({ state }: { state: SaveState }) {
 export function WorkspaceHeader(props: WorkspaceHeaderProps) {
     const { title, email, access, saveState, exporting, exportBlocked, onExport, onUpgrade } = props;
     const { t, href } = useI18n();
-    const isFree = !access.role && access.tier === 'FREE';
+    const canUpgrade = nextTier(access) !== null;
     const displayTitle = title.trim() || t.workspace.untitled;
 
     return (
@@ -73,7 +76,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
 
                 <div className="hidden md:block"><PlanBadge access={access} /></div>
 
-                {isFree && (
+                {canUpgrade && (
                     <button type="button" onClick={onUpgrade} className="btn btn-soft btn-sm hidden sm:inline-flex">
                         <Sparkles /> {t.workspace.upgrade}
                     </button>
@@ -84,10 +87,10 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     blocked={exportBlocked}
                     multiPlatform={access.entitlements.canUseMultiPlatformExport}
                     onExport={onExport}
-                    onLocked={onUpgrade}
+                    onLocked={props.onUnlockPlatforms}
                 />
 
-                <AccountMenu email={email} access={access} onUpgrade={onUpgrade} />
+                <AccountMenu email={email} access={access} onUpgrade={onUpgrade} onExtend={props.onExtend} />
             </div>
         </header>
     );
