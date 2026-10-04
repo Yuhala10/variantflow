@@ -1,10 +1,11 @@
 import type { Metadata } from 'next';
-import { Inter, Instrument_Serif } from 'next/font/google';
+import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
 import { getDictionary, localePath, locales } from '../lib/i18n';
+import { themeInitScript } from '../lib/theme';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
-const instrumentSerif = Instrument_Serif({ subsets: ['latin'], weight: '400', style: ['italic'], variable: '--font-serif', display: 'swap' });
+const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-jakarta', display: 'swap' });
 
 export const metadata: Metadata = {
     title: 'Page not found · Page introuvable · VariantFlow',
@@ -17,17 +18,18 @@ export const metadata: Metadata = {
  */
 export default function GlobalNotFound() {
     return (
-        <html lang="en" className={`${inter.variable} ${instrumentSerif.variable}`}>
+        <html lang="en" className={`${inter.variable} ${jakarta.variable}`} suppressHydrationWarning>
             <body className="min-h-dvh bg-canvas font-sans text-ink antialiased">
-                <main className="safe-top safe-bottom relative flex min-h-dvh flex-col items-center justify-center overflow-hidden px-6 py-16 text-center">
-                    <div className="grid-backdrop pointer-events-none absolute inset-0 -z-10" />
-                    <p className="font-display text-8xl italic leading-none text-brand">404</p>
+                <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+                <main className="safe-top safe-bottom relative isolate flex min-h-dvh flex-col items-center justify-center overflow-hidden px-6 py-16 text-center">
+                    <div className="aurora" />
+                    <h1 className="display text-gradient text-8xl">404</h1>
                     <div className="mt-10 grid w-full max-w-2xl gap-6 sm:grid-cols-2">
                         {locales.map((locale) => {
                             const t = getDictionary(locale);
                             return (
                                 <section key={locale} lang={locale} className="card p-6 text-left">
-                                    <h1 className="text-xl font-semibold tracking-tight text-ink">{t.notFound.title}</h1>
+                                    <h2 className="text-xl font-bold tracking-tight text-ink">{t.notFound.title}</h2>
                                     <p className="mt-2 text-sm text-ink-2">{t.notFound.text}</p>
                                     <a href={localePath(locale, '/')} className="btn btn-primary mt-5">{t.common.backHome}</a>
                                 </section>

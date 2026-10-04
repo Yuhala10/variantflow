@@ -59,6 +59,23 @@ Plan limits are defined once in `lib/entitlements.ts` and enforced by the API ro
 
 A row-run is one variant row exported or one supplier row imported.
 
+## Design
+
+Every color comes from the tokens at the top of `app/globals.css` (light palette, dark palette, and the sunrise gradient). Change them there to re-skin the whole product. Visitors can pick Light, Dark or Auto; the choice is stored in `localStorage` (`vf_theme`) and applied before first paint by a small inline script (`lib/theme.ts`).
+
+## Content and SEO pages
+
+| What | Where |
+|---|---|
+| Feature landing pages (7, with translated URLs) | `lib/content/landing.ts`, route `app/[locale]/(site)/[slug]` |
+| Guides (3 long-form articles) | `lib/content/guides.ts`, route `app/[locale]/(site)/guides` |
+| URL slugs per language | `lib/i18n/routes.ts` |
+| Home and pricing extras | `lib/content/marketing.ts` |
+| Share images | `lib/og-image.tsx`, served at `/og.png` and `/og/<key>` |
+| Sitemap, robots, `llms.txt` | `app/sitemap.ts`, `app/robots.ts`, `app/[locale]/llms.txt` |
+
+To add a page, add its slugs to `lib/i18n/routes.ts` and its text (English and French) to the matching content file. The sitemap, footer, share image and `hreflang` tags pick it up automatically. When a guide changes, update its date in `GUIDE_DATES`.
+
 ## Languages
 
 English is served without a prefix (`/pricing`), French under `/fr` (`/fr/pricing`). All text lives in `lib/i18n/dictionaries/`; `fr.ts` is type-checked against `en.ts`, so a missing translation fails the build.

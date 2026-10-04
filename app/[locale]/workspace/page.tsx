@@ -52,7 +52,7 @@ function WorkspaceLoading() {
                     <p className="mt-1 text-sm text-ink-3">{t.workspace.loadingSub}</p>
                 </div>
                 <div className="h-1 w-32 overflow-hidden rounded-full bg-surface-3">
-                    <div className="animate-shimmer h-full w-1/2 rounded-full bg-brand" />
+                    <div className="animate-shimmer bg-gradient-brand h-full w-1/2 rounded-full" />
                 </div>
             </div>
         </main>
@@ -63,9 +63,9 @@ function Panel({ id, step, title, description, children, className }: { id: stri
     return (
         <section aria-labelledby={`panel-${id}`} className={cn('card p-5 sm:p-6', className)}>
             <header className="mb-5 flex items-start gap-3">
-                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-brand text-xs font-semibold text-on-brand">{step}</span>
+                <span className="bg-gradient-brand inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl font-display text-sm font-extrabold text-white shadow-sm">{step}</span>
                 <div>
-                    <h2 id={`panel-${id}`} className="text-base font-semibold leading-7 text-ink">{title}</h2>
+                    <h2 id={`panel-${id}`} className="text-lg font-bold leading-8 text-ink">{title}</h2>
                     <p className="text-sm text-ink-3">{description}</p>
                 </div>
             </header>

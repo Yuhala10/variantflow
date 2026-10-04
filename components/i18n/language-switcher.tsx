@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Languages } from 'lucide-react';
 import { LOCALE_COOKIE, localePath, stripLocale, type Locale } from '../../lib/i18n';
+import { translatePath } from '../../lib/i18n/routes';
 import { useI18n } from './i18n-provider';
 import { cn } from '../../lib/utils';
 
@@ -18,7 +19,8 @@ export function LanguageSwitcher({ className, compact = false }: { className?: s
     const { locale, t } = useI18n();
     const pathname = usePathname() || '/';
     const target: Locale = locale === 'en' ? 'fr' : 'en';
-    const href = localePath(target, stripLocale(pathname));
+    // Content pages have translated URLs, so the path is converted as well as prefixed.
+    const href = localePath(target, translatePath(stripLocale(pathname), locale, target));
 
     return (
         <Link

@@ -52,7 +52,7 @@ export function ValidationSummary(props: ValidationSummaryProps) {
                 {stats.map((stat) => (
                     <div key={stat.label} className="card min-w-0 px-4 py-3.5">
                         <dt className="text-xs leading-tight text-ink-3">{stat.label}</dt>
-                        <dd className={cn('mt-1 truncate text-xl font-semibold tabular-nums tracking-tight text-ink', stat.tone)}>{stat.value}</dd>
+                        <dd className={cn('mt-1 truncate font-display text-2xl font-extrabold tabular-nums tracking-[-0.03em] text-ink', stat.tone)}>{stat.value}</dd>
                     </div>
                 ))}
             </dl>

@@ -5,6 +5,18 @@ import { AlertCircle, CheckCircle2, X } from 'lucide-react';
 import { useI18n } from '../i18n/i18n-provider';
 
 export type NoticeTone = 'success' | 'error';
+
+// Decorative only: eight specks that fly out when something succeeds.
+const BURST = [
+    { dx: '-34px', dy: '-30px', rot: '-140deg', color: 'var(--g1)' },
+    { dx: '-14px', dy: '-44px', rot: '90deg', color: 'var(--g2)' },
+    { dx: '12px', dy: '-46px', rot: '160deg', color: 'var(--g3)' },
+    { dx: '34px', dy: '-28px', rot: '-80deg', color: 'var(--success)' },
+    { dx: '-40px', dy: '-6px', rot: '200deg', color: 'var(--g3)' },
+    { dx: '42px', dy: '-4px', rot: '120deg', color: 'var(--g1)' },
+    { dx: '-22px', dy: '-52px', rot: '-200deg', color: 'var(--success)' },
+    { dx: '24px', dy: '-54px', rot: '240deg', color: 'var(--g2)' },
+];
 interface NoticeState { id: number; tone: NoticeTone; text: string }
 
 export function useNotice() {
@@ -36,8 +48,19 @@ export function Notice({ notice, onDismiss }: { notice: NoticeState | null; onDi
                 <div
                     key={notice.id}
                     role={notice.tone === 'error' ? 'alert' : 'status'}
-                    className="animate-rise pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-2xl border border-line bg-surface p-4 shadow-xl [animation-duration:0.35s]"
+                    className="animate-rise pointer-events-auto relative flex w-full max-w-sm items-start gap-3 rounded-2xl border border-line bg-surface p-4 shadow-xl [animation-duration:0.35s]"
                 >
+                    {notice.tone === 'success' && (
+                        <span aria-hidden="true" className="pointer-events-none absolute left-6 top-6">
+                            {BURST.map((speck, index) => (
+                                <span
+                                    key={index}
+                                    className="absolute h-1.5 w-1.5 rounded-[2px] opacity-0 [animation:burst_0.9s_ease-out_0.1s_forwards]"
+                                    style={{ background: speck.color, '--dx': speck.dx, '--dy': speck.dy, '--rot': speck.rot } as React.CSSProperties}
+                                />
+                            ))}
+                        </span>
+                    )}
                     {notice.tone === 'success'
                         ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
                         : <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-danger" />}

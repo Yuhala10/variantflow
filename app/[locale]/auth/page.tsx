@@ -6,7 +6,8 @@ import { FormEvent, useState } from 'react';
 import { ArrowLeft, Check, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '../../../lib/supabase/client';
 import { safeRedirectPath } from '../../../lib/safe-redirect';
-import { Logo, LogoMark } from '../../../components/brand/logo';
+import { Logo, LogoGlyph } from '../../../components/brand/logo';
+import { ThemeToggle } from '../../../components/theme/theme-toggle';
 import { useI18n } from '../../../components/i18n/i18n-provider';
 import { LanguageSwitcher } from '../../../components/i18n/language-switcher';
 import { cn } from '../../../lib/utils';
@@ -65,18 +66,19 @@ export default function AuthPage() {
     return (
         <div className="grid min-h-dvh lg:grid-cols-[1fr_1.1fr]">
             {/* Brand panel */}
-            <aside className="relative hidden overflow-hidden bg-brand p-12 text-on-brand lg:flex lg:flex-col lg:justify-between">
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_60%_at_20%_0%,rgb(255_255_255/0.18),transparent)]" />
-                <Link href={href('/')} className="relative inline-flex items-center gap-2.5 text-[15px] font-semibold">
-                    <LogoMark className="bg-on-brand/15 shadow-none" />
+            <aside className="relative isolate hidden overflow-hidden bg-[linear-gradient(150deg,#4338ca_0%,#6d3fe6_40%,#d0409a_85%,#ff8f4a_125%)] p-12 text-white lg:flex lg:flex-col lg:justify-between">
+                <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(80%_60%_at_20%_0%,rgb(255_255_255/0.25),transparent)]" />
+                <div className="pointer-events-none absolute inset-0 -z-10 opacity-[0.16] [background-image:linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(ellipse_80%_70%_at_30%_40%,#000,transparent)]" />
+                <Link href={href('/')} className="relative inline-flex items-center gap-2.5 font-display text-[17px] font-bold">
+                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/20"><LogoGlyph /></span>
                     VariantFlow
                 </Link>
                 <div className="relative max-w-md">
-                    <p className="font-display text-5xl italic leading-[1.05]">{copy.quote}</p>
+                    <p className="font-display text-[2.75rem] font-extrabold leading-[1.08] tracking-[-0.035em]">{copy.quote}</p>
                     <ul className="mt-10 space-y-3">
                         {copy.benefits.map((benefit) => (
                             <li key={benefit} className="flex items-center gap-3 text-[15px] opacity-90">
-                                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-on-brand/15"><Check className="h-3.5 w-3.5" /></span>
+                                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/20"><Check className="h-3.5 w-3.5" strokeWidth={3} /></span>
                                 {benefit}
                             </li>
                         ))}
@@ -90,6 +92,7 @@ export default function AuthPage() {
                 <div className="flex items-center justify-between gap-2">
                     <div className="lg:hidden"><Logo href={href('/')} /></div>
                     <div className="ml-auto flex items-center gap-1">
+                        <ThemeToggle />
                         <LanguageSwitcher compact />
                         <Link href={href('/')} className="btn btn-ghost btn-sm"><ArrowLeft /> {t.common.home}</Link>
                     </div>
@@ -97,10 +100,10 @@ export default function AuthPage() {
 
                 <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center py-10">
                     <div className="animate-rise">
-                        <h1 className="text-3xl font-semibold tracking-tight text-ink">{mode === 'login' ? copy.welcome : copy.create}</h1>
+                        <h1 className="font-display text-4xl font-extrabold tracking-[-0.035em] text-ink">{mode === 'login' ? copy.welcome : copy.create}</h1>
                         <p className="mt-2 text-[15px] text-ink-2">{mode === 'login' ? copy.welcomeSub : copy.createSub}</p>
 
-                        <div role="tablist" aria-label={copy.tabsLabel} className="mt-8 grid grid-cols-2 rounded-xl bg-surface-2 p-1">
+                        <div role="tablist" aria-label={copy.tabsLabel} className="mt-8 grid grid-cols-2 rounded-full bg-surface-2 p-1">
                             {(['login', 'signup'] as Mode[]).map((value) => (
                                 <button
                                     key={value}
@@ -109,7 +112,7 @@ export default function AuthPage() {
                                     aria-selected={mode === value}
                                     onClick={() => switchMode(value)}
                                     className={cn(
-                                        'min-h-10 rounded-lg px-2 text-sm font-semibold transition-all duration-200',
+                                        'min-h-10 rounded-full px-2 text-sm font-semibold transition-all duration-200',
                                         mode === value ? 'bg-surface text-ink shadow-sm' : 'text-ink-3 hover:text-ink-2',
                                     )}
                                 >

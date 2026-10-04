@@ -9,10 +9,10 @@ interface LegalSection {
 export function LegalPage({ locale, title, sections, children }: { locale: Locale; title: string; sections: LegalSection[]; children?: React.ReactNode }) {
     const t = getDictionary(locale);
     return (
-        <article className="container-page max-w-3xl animate-rise pb-24 pt-14 md:pt-20">
+        <article className="container-page max-w-3xl animate-rise pb-24 pt-12 md:pt-16">
             {children}
             <p className="eyebrow">{t.legal.eyebrow}</p>
-            <h1 className="mt-3 text-4xl font-semibold tracking-[-0.03em] text-ink sm:text-5xl">{title}</h1>
+            <h1 className="display mt-5 text-[2.5rem] sm:text-6xl">{title}</h1>
             <p className="mt-4 text-sm text-ink-3">{t.common.lastUpdated({ date: t.legal.updated })}</p>
             <div className="prose-page mt-10 border-t border-line pt-4">
                 {sections.map((section) => (

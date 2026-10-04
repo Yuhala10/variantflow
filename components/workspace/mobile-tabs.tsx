@@ -18,7 +18,7 @@ export function MobileTabs({ active, onChange, variantCount, issueCount }: { act
     const labels = t.workspace.tabs;
 
     return (
-        <nav aria-label={labels.label} className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-line bg-canvas/85 backdrop-blur-xl backdrop-saturate-150 lg:hidden">
+        <nav aria-label={labels.label} className="glass safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-line lg:hidden">
             <ul className="mx-auto grid max-w-lg grid-cols-4">
                 {TABS.map(({ id, icon: Icon }) => {
                     const selected = active === id;

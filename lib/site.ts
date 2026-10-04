@@ -5,7 +5,7 @@ const rawSiteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://variantflow-omeg
 export const siteConfig = {
     name: 'VariantFlow',
     url: rawSiteUrl.replace(/\/+$/, ''),
-    themeColor: { light: '#f7f4ee', dark: '#0d1210' },
+    themeColor: { light: '#f6f6fb', dark: '#0a0b14' },
 } as const;
 
 export const siteHost = new URL(siteConfig.url).host;

@@ -22,29 +22,33 @@ export function PlanCards({ locale, headingLevel = 'h3' }: { locale: Locale; hea
                         <article
                             key={tier}
                             className={cn(
-                                'relative flex flex-col rounded-[1.375rem] border p-7 transition-shadow duration-300',
-                                recommended ? 'border-brand/40 bg-surface shadow-xl ring-1 ring-brand/15' : 'border-line bg-surface shadow-sm hover:shadow-md',
+                                'reveal relative flex flex-col rounded-[1.75rem] p-7 sm:p-8',
+                                recommended
+                                    ? 'ring-gradient shadow-[0_30px_70px_-30px_color-mix(in_oklab,var(--brand)_55%,transparent)] lg:-my-3 lg:py-11'
+                                    : 'card card-hover',
                             )}
                         >
-                            {recommended && <span className="chip absolute -top-3 left-7 bg-brand text-on-brand shadow-sm">{t.common.mostPopular}</span>}
-                            <Heading className="text-lg font-semibold text-ink">{copy.name}</Heading>
+                            {recommended && <span className="chip bg-gradient-brand absolute -top-3 left-8 px-3 py-1 text-white shadow-md">{t.common.mostPopular}</span>}
+                            <Heading className="text-xl font-bold text-ink">{copy.name}</Heading>
                             <p className="mt-1.5 min-h-[2.75rem] text-sm leading-relaxed text-ink-2">{copy.description}</p>
 
                             <p className="mt-6 flex items-baseline gap-1.5">
-                                <span className="text-4xl font-semibold tracking-tight text-ink">{locale === 'fr' ? `${plan.priceUsdt} $` : `$${plan.priceUsdt}`}</span>
+                                <span className="font-display text-5xl font-extrabold tracking-[-0.04em] text-ink">{locale === 'fr' ? `${plan.priceUsdt} $` : `$${plan.priceUsdt}`}</span>
                                 <span className="text-sm text-ink-3">{plan.priceUsdt === 0 ? t.common.forever : t.common.perMonth}</span>
                             </p>
 
-                            <Link href={localePath(locale, '/workspace')} className={cn('btn btn-lg mt-6 w-full', recommended ? 'btn-primary' : 'btn-secondary')}>
+                            <Link href={localePath(locale, '/workspace')} className={cn('btn btn-lg mt-7 w-full', recommended ? 'btn-primary' : 'btn-secondary')}>
                                 {copy.cta} <ArrowRight />
                             </Link>
 
-                            <ul className="mt-7 space-y-3 border-t border-line pt-6">
+                            <ul className="mt-8 space-y-3.5 border-t border-line pt-7">
                                 {copy.features.map((feature) => (
                                     <li key={feature.text} className="flex items-start gap-3 text-sm">
-                                        {feature.included
-                                            ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden="true" />
-                                            : <Minus className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" aria-hidden="true" />}
+                                        {feature.included ? (
+                                            <span className="mt-0.5 inline-flex h-[1.125rem] w-[1.125rem] shrink-0 items-center justify-center rounded-full bg-brand-soft text-brand" aria-hidden="true"><Check className="h-3 w-3" strokeWidth={3} /></span>
+                                        ) : (
+                                            <Minus className="mt-0.5 h-[1.125rem] w-[1.125rem] shrink-0 text-ink-3" aria-hidden="true" />
+                                        )}
                                         <span className={feature.included ? 'text-ink-2' : 'text-ink-3'}>
                                             {feature.text}
                                             {!feature.included && <span className="sr-only"> {t.common.notIncluded}</span>}
@@ -56,7 +60,7 @@ export function PlanCards({ locale, headingLevel = 'h3' }: { locale: Locale; hea
                     );
                 })}
             </div>
-            <p className="mt-6 text-center text-xs text-ink-3">{t.plans.rowRunNote}</p>
+            <p className="mt-8 text-center text-xs text-ink-3">{t.plans.rowRunNote}</p>
         </>
     );
 }

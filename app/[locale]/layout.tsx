@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from 'next';
 import { notFound } from 'next/navigation';
-import { Inter, Instrument_Serif } from 'next/font/google';
+import { Inter, Plus_Jakarta_Sans } from 'next/font/google';
 import { siteConfig } from '../../lib/site';
 import { JsonLd, languageAlternates, organizationSchema, websiteSchema } from '../../lib/seo';
 import { getDictionary, htmlLang, isLocale, locales, ogLocale } from '../../lib/i18n';
 import { I18nProvider } from '../../components/i18n/i18n-provider';
+import { themeInitScript } from '../../lib/theme';
 import '../globals.css';
 
 const inter = Inter({
@@ -13,11 +14,9 @@ const inter = Inter({
   display: 'swap',
 });
 
-const instrumentSerif = Instrument_Serif({
+const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
-  weight: '400',
-  style: ['normal', 'italic'],
-  variable: '--font-serif',
+  variable: '--font-jakarta',
   display: 'swap',
 });
 
@@ -83,8 +82,10 @@ export default async function RootLayout({ children, params }: { children: React
   const t = getDictionary(locale);
 
   return (
-    <html lang={htmlLang[locale]} className={`${inter.variable} ${instrumentSerif.variable}`}>
+    <html lang={htmlLang[locale]} className={`${inter.variable} ${jakarta.variable}`} suppressHydrationWarning>
       <body className="min-h-dvh bg-canvas font-sans text-ink antialiased">
+        {/* Applies a saved Light/Dark choice before the first paint. */}
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-surface focus:px-4 focus:py-2 focus:shadow-lg">
           {t.common.skipToContent}
         </a>

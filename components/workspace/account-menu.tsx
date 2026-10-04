@@ -10,6 +10,7 @@ import { useI18n } from '../i18n/i18n-provider';
 import { rememberLocale } from '../i18n/language-switcher';
 import { PlanBadge } from './plan-badge';
 import { useDismiss } from './use-dismiss';
+import { ThemeSwitch } from '../theme/theme-toggle';
 
 export function AccountMenu({ email, access, onUpgrade }: { email: string | null; access: AccountAccess; onUpgrade: () => void }) {
     const { t, href, locale, formatDate } = useI18n();
@@ -61,6 +62,10 @@ export function AccountMenu({ email, access, onUpgrade }: { email: string | null
                         {access.currentPeriodEnd && !access.role && access.tier !== 'FREE' && (
                             <p className="mt-2 text-xs text-ink-3">{copy.renews({ date: formatDate(access.currentPeriodEnd) })}</p>
                         )}
+                    </div>
+                    <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
+                        <span className="text-sm text-ink-2">{t.common.theme.label}</span>
+                        <ThemeSwitch />
                     </div>
                     <div className="p-1.5">
                         {isFree && (

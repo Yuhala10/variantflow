@@ -43,6 +43,7 @@ export const en = {
         lastUpdated: (p: Params) => `Last updated ${p.date}`,
         language: 'Language',
         languageNames: { en: 'English', fr: 'Français' },
+        theme: { label: 'Theme', light: 'Light', dark: 'Dark', auto: 'Auto' },
         switchTo: 'Français',
     },
 

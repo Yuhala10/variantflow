@@ -26,30 +26,43 @@ export const languageAlternates = (path: string) => ({
 interface PageMetadataInput {
     title: string;
     description: string;
+    /** Path without language prefix, when it is the same in every language. */
     path: string;
+    /** Per-language paths, for pages whose URL is translated (overrides `path`). */
+    paths?: Record<Locale, string>;
     /** Use the plain title without the "· VariantFlow" suffix. */
     absoluteTitle?: boolean;
     noIndex?: boolean;
+    /** Prefix-free path of this page's share image; defaults to the site image. */
+    ogImage?: string;
+    /** Marks the page as an article (guides). */
+    article?: { published: string; modified: string };
 }
 
-export function pageMetadata(locale: Locale, { title, description, path, absoluteTitle, noIndex }: PageMetadataInput): Metadata {
+export function pageMetadata(locale: Locale, { title, description, path, paths, absoluteTitle, noIndex, ogImage, article }: PageMetadataInput): Metadata {
     const socialTitle = absoluteTitle ? title : `${title} · ${siteConfig.name}`;
-    const url = localePath(locale, path);
-    const image = { url: shareImagePath(locale), width: 1200, height: 630, alt: getDictionary(locale).meta.ogAlt };
+    const pathFor = (target: Locale) => localePath(target, paths ? paths[target] : path);
+    const url = pathFor(locale);
+    const image = { url: localePath(locale, ogImage ?? '/og.png'), width: 1200, height: 630, alt: ogImage ? title : getDictionary(locale).meta.ogAlt };
 
     return {
         title: absoluteTitle ? { absolute: title } : title,
         description,
-        alternates: { canonical: url, languages: languageAlternates(path) },
+        alternates: {
+            canonical: url,
+            languages: { ...Object.fromEntries(locales.map((target) => [htmlLang[target], pathFor(target)])), 'x-default': pathFor('en') },
+        },
         openGraph: {
             title: socialTitle,
             description,
             url,
-            type: 'website',
             siteName: siteConfig.name,
             locale: ogLocale[locale],
             alternateLocale: locales.filter((other) => other !== locale).map((other) => ogLocale[other]),
             images: [image],
+            ...(article
+                ? { type: 'article' as const, publishedTime: article.published, modifiedTime: article.modified, authors: [siteConfig.name] }
+                : { type: 'website' as const }),
         },
         twitter: { card: 'summary_large_image', title: socialTitle, description, images: [image.url] },
         robots: noIndex ? { index: false, follow: false, googleBot: { index: false, follow: false } } : undefined,
@@ -139,4 +152,40 @@ export const howToSchema = (locale: Locale, name: string, steps: ReadonlyArray<{
     name,
     inLanguage: htmlLang[locale],
     step: steps.map((step, index) => ({ '@type': 'HowToStep', position: index + 1, name: step.title, text: step.text })),
+});
+
+export const webPageSchema = (locale: Locale, page: { name: string; description: string; path: string }): Schema => ({
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    '@id': `${absoluteUrl(localePath(locale, page.path))}#webpage`,
+    url: absoluteUrl(localePath(locale, page.path)),
+    name: page.name,
+    description: page.description,
+    inLanguage: htmlLang[locale],
+    isPartOf: { '@id': `${siteConfig.url}/#website` },
+    about: { '@id': `${siteConfig.url}/#software` },
+});
+
+export const articleSchema = (
+    locale: Locale,
+    article: { title: string; description: string; path: string; published: string; modified: string; image: string },
+): Schema => ({
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: article.title,
+    description: article.description,
+    inLanguage: htmlLang[locale],
+    datePublished: article.published,
+    dateModified: article.modified,
+    image: absoluteUrl(localePath(locale, article.image)),
+    mainEntityOfPage: absoluteUrl(localePath(locale, article.path)),
+    author: { '@id': `${siteConfig.url}/#organization` },
+    publisher: { '@id': `${siteConfig.url}/#organization` },
+});
+
+export const itemListSchema = (name: string, items: ReadonlyArray<{ name: string; url: string }>): Schema => ({
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name,
+    itemListElement: items.map((item, index) => ({ '@type': 'ListItem', position: index + 1, name: item.name, url: absoluteUrl(item.url) })),
 });

@@ -10,6 +10,7 @@ import { AccountMenu } from './account-menu';
 import { PlanBadge } from './plan-badge';
 import { ExportMenu } from './export-menu';
 import { ProjectSwitcher, type ProjectSummary } from './project-switcher';
+import { ThemeToggle } from '../theme/theme-toggle';
 
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -48,7 +49,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
     const displayTitle = title.trim() || t.workspace.untitled;
 
     return (
-        <header className="safe-top sticky top-0 z-40 border-b border-line bg-canvas/80 backdrop-blur-xl backdrop-saturate-150">
+        <header className="glass safe-top sticky top-0 z-40 border-b border-line">
             <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-2 px-4 sm:gap-3 sm:px-6">
                 <Link href={href('/')} aria-label="VariantFlow" className="shrink-0"><LogoMark /></Link>
                 <div className="min-w-0 flex-1">
@@ -87,6 +88,7 @@ export function WorkspaceHeader(props: WorkspaceHeaderProps) {
                     onLocked={onUpgrade}
                 />
 
+                <ThemeToggle className="hidden sm:inline-flex" />
                 <AccountMenu email={email} access={access} onUpgrade={onUpgrade} />
             </div>
         </header>
