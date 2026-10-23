@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '../../../../lib/supabase/server';
+import { getSessionUser } from '../../../../lib/supabase/session';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createSupabaseServerClient();
   if (supabase) {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) return NextResponse.json({ status: 'UNAUTHORIZED' }, { status: 401 });
 
     const { data: payment } = await supabase

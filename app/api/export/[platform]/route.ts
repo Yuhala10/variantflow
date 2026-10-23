@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '../../../../lib/supabase/server';
+import { getSessionUser } from '../../../../lib/supabase/session';
 import { getAccountAccess } from '../../../../lib/entitlements.server';
 import { isWithinLimit } from '../../../../lib/entitlements';
 import { consumeRowRuns } from '../../../../lib/usage.server';
@@ -16,8 +17,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const supabase = await createSupabaseServerClient();
     if (!supabase) return apiError('not-configured', 503, 'Cloud export is not configured yet.');
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) return apiError('unauthorized', 401, 'Sign in before exporting.');
+    const user = await getSessionUser(supabase);
+    if (!user) return apiError('unauthorized', 401, 'Sign in before exporting.');
 
     const catalog = await request.json().catch(() => null) as CatalogExportInput | null;
     if (!catalog || typeof catalog.productTitle !== 'string' || !Array.isArray(catalog.options) || !Array.isArray(catalog.variants)) {

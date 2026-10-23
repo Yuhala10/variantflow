@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '../../../../lib/supabase/server';
+import { getSessionUser } from '../../../../lib/supabase/session';
 import { getAccountAccess } from '../../../../lib/entitlements.server';
 import { consumeRowRuns } from '../../../../lib/usage.server';
 import { apiError } from '../../../../lib/api-errors';
@@ -11,7 +12,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createSupabaseServerClient();
     if (!supabase) return apiError('not-configured', 503, 'Cloud account is not configured yet.');
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) return apiError('unauthorized', 401, 'Sign in before importing.');
 
     const body = await request.json().catch(() => null);

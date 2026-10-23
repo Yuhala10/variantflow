@@ -91,7 +91,7 @@ const downloadBlob = (blob: Blob, fileName: string) => {
 };
 
 export default function WorkspacePage() {
-    const { t } = useI18n();
+    const { t, href } = useI18n();
     const store = useProductStore();
     const [ready, setReady] = useState(false);
     const [email, setEmail] = useState<string | null>(null);
@@ -116,15 +116,39 @@ export default function WorkspacePage() {
     const apiMessage = useCallback((payload: { code?: string; limit?: number | null; error?: string } | null, fallback: string) =>
         translateCode(t.apiErrors, payload?.code, { limit: payload?.limit ?? '' }, fallback), [t]);
 
+    /** The session ended (expired, or signed out elsewhere): sign in again, then come straight back. */
+    const sendToSignIn = useCallback(() => {
+        const BOUNCE_KEY = 'vf_auth_bounce';
+        try {
+            // Never bounce twice in a row; if sign-in just sent us here, stay and explain instead of looping.
+            if (Date.now() - Number(window.sessionStorage.getItem(BOUNCE_KEY) || 0) < 20000) return false;
+            window.sessionStorage.setItem(BOUNCE_KEY, String(Date.now()));
+        } catch {
+            // Storage blocked: redirect anyway.
+        }
+        // A full page load on purpose: it drops the client router cache, which can hold stale auth redirects.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+        window.location.assign(`${href('/auth')}?next=${encodeURIComponent(window.location.pathname)}`);
+        return true;
+    }, [href]);
+
     const loadAccess = useCallback(async (): Promise<AccountAccess | null> => {
         const response = await fetch('/api/account', { cache: 'no-store' });
-        if (!response.ok) return null;
+        if (response.status === 401) {
+            if (!sendToSignIn()) show('error', t.apiErrors.unauthorized());
+            return null;
+        }
+        if (!response.ok) {
+            // Say so, rather than silently showing the account as signed out on the Free plan.
+            show('error', apiMessage(await response.json().catch(() => null), t.apiErrors['plan-check-failed']()));
+            return null;
+        }
         const account = await response.json();
         if (account.access) useProductStore.getState().setAccess(account.access);
         setEmail(account.user?.email ?? null);
         setRowRunsUsed(account.usage?.rowRunsUsed ?? 0);
         return account.access ?? null;
-    }, []);
+    }, [apiMessage, sendToSignIn, show, t]);
 
     /** Loads a catalog into the editor without triggering an autosave. */
     const openCatalog = useCallback((projectId: string | null, catalog: Partial<CatalogSnapshot>) => {

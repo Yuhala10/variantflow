@@ -7,9 +7,10 @@ export const currentMonthStart = () => {
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
 };
 
-/** Row-runs used this month, read with the signed-in user's own client (RLS: own rows only). */
+/** Row-runs used this month for an already-verified user. */
 export async function getMonthlyRowRuns(supabase: SupabaseClient, userId: string) {
-    const { data } = await supabase
+    const db = createSupabaseAdminClient() ?? supabase;
+    const { data } = await db
         .from('usage_monthly')
         .select('row_runs')
         .eq('user_id', userId)

@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { FormEvent, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { FormEvent, useEffect, useState } from 'react';
 import { ArrowLeft, Check, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { createSupabaseBrowserClient } from '../../../lib/supabase/client';
 import { safeRedirectPath } from '../../../lib/safe-redirect';
@@ -17,7 +17,6 @@ type Mode = 'login' | 'signup';
 export default function AuthPage() {
     const { t, href } = useI18n();
     const copy = t.auth;
-    const router = useRouter();
     const searchParams = useSearchParams();
     const next = safeRedirectPath(searchParams.get('next'), href('/workspace'));
     const [mode, setMode] = useState<Mode>(searchParams.get('mode') === 'signup' ? 'signup' : 'login');
@@ -26,6 +25,17 @@ export default function AuthPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
     const [busy, setBusy] = useState(false);
+
+    // Already signed in (for example after the browser replayed an old redirect): go straight on.
+    useEffect(() => {
+        const supabase = createSupabaseBrowserClient();
+        if (!supabase) return;
+        let active = true;
+        supabase.auth.getClaims().then(({ data }) => {
+            if (active && data?.claims?.sub) window.location.replace(next);
+        });
+        return () => { active = false; };
+    }, [next]);
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -53,8 +63,10 @@ export default function AuthPage() {
             setMessage({ tone: 'success', text: copy.confirmEmail });
             setBusy(false);
         } else {
-            router.replace(next);
-            router.refresh();
+            // A full page load, not a client-side navigation: the router may hold a redirect to this
+            // sign-in page cached from before the session existed, which made people sign in twice.
+            // The button keeps spinning until the workspace replaces this page.
+            window.location.assign(next);
         }
     };
 

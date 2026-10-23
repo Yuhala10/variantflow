@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '../../../lib/supabase/server';
+import { getSessionUser } from '../../../lib/supabase/session';
 import { getAccountAccess } from '../../../lib/entitlements.server';
 import { apiError } from '../../../lib/api-errors';
 
@@ -10,7 +11,7 @@ const getUserAndClient = async () => {
     const supabase = await createSupabaseServerClient();
     if (!supabase) return { supabase: null, user: null };
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     return { supabase, user };
 };
 

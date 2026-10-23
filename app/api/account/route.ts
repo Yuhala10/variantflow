@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '../../../lib/supabase/server';
+import { getSessionUser } from '../../../lib/supabase/session';
 import { getAccountAccess } from '../../../lib/entitlements.server';
 import { currentMonthStart, getMonthlyRowRuns } from '../../../lib/usage.server';
 import { apiError } from '../../../lib/api-errors';
@@ -8,7 +9,7 @@ export async function GET() {
     const supabase = await createSupabaseServerClient();
     if (!supabase) return apiError('not-configured', 503, 'Cloud account is not configured yet.');
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser(supabase);
     if (!user) return apiError('unauthorized', 401, 'Sign in before loading your account.');
 
     try {

@@ -65,8 +65,9 @@ export async function proxy(request: NextRequest) {
                 },
             });
 
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) {
+            // Verifies the session token locally (ES256 signing keys), refreshing it first if expired.
+            const { data } = await supabase.auth.getClaims();
+            if (!data?.claims?.sub) {
                 const loginUrl = request.nextUrl.clone();
                 loginUrl.pathname = localePath(locale, '/auth');
                 loginUrl.search = `?next=${encodeURIComponent(pathname)}`;
