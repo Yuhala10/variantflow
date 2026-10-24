@@ -16,7 +16,8 @@ import { LogoMark } from '../../../components/brand/logo';
 import { useI18n } from '../../../components/i18n/i18n-provider';
 import { validateProductData } from '../../../domain/validation/validateProduct';
 import type { ImportedCatalog } from '../../../domain/import/importCatalog';
-import { EXPORT_PLATFORMS, type ExportPlatform } from '../../../exporters';
+import type { ExportPlatform } from '../../../exporters';
+import type { ImportRequest } from '../../../components/product/import-panel';
 import { isSupabaseConfigured } from '../../../lib/supabase/config';
 import { isWithinLimit } from '../../../lib/entitlements';
 import { translateCode } from '../../../lib/i18n';
@@ -289,10 +290,9 @@ export default function WorkspacePage() {
             variants: store.variants,
         };
 
+        // Files are only ever built on the server, after the plan check; the converters never ship to the browser.
         if (!isSupabaseConfigured()) {
-            const csv = EXPORT_PLATFORMS[platform].convert(catalog);
-            downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), `variantflow_${EXPORT_PLATFORMS[platform].fileSuffix}.csv`);
-            show('success', t.workspace.notices.downloaded({ count: store.variants.length, format: formatName }));
+            show('error', t.apiErrors['not-configured']());
             return;
         }
 
@@ -313,7 +313,7 @@ export default function WorkspacePage() {
 
             const used = Number(response.headers.get('X-Row-Runs-Used'));
             if (Number.isFinite(used) && used > 0) setRowRunsUsed(used);
-            downloadBlob(await response.blob(), fileNameFrom(response, `variantflow_${EXPORT_PLATFORMS[platform].fileSuffix}.csv`));
+            downloadBlob(await response.blob(), fileNameFrom(response, `variantflow_${platform}.csv`));
             show('success', t.workspace.notices.downloaded({ count: store.variants.length, format: formatName }));
         } catch {
             show('error', t.workspace.notices.offline);
@@ -322,19 +322,22 @@ export default function WorkspacePage() {
         }
     };
 
-    const handleImport = async (catalog: ImportedCatalog, rows: number) => {
+    const handleImport = async (request: ImportRequest) => {
+        // The server reads the file, checks the plan, meters the rows and returns the built catalog.
+        let catalog: ImportedCatalog;
         try {
-            const response = await fetch('/api/usage/import', {
+            const response = await fetch('/api/import/apply', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ rows }),
+                body: JSON.stringify(request),
             });
             const payload = await response.json().catch(() => null);
-            if (!response.ok) {
+            if (!response.ok || !payload?.catalog) {
                 show('error', apiMessage(payload, t.apiErrors['server-error']()));
                 return false;
             }
-            if (typeof payload?.used === 'number') setRowRunsUsed(payload.used);
+            if (typeof payload.used === 'number') setRowRunsUsed(payload.used);
+            catalog = payload.catalog;
         } catch {
             show('error', t.workspace.notices.offline);
             return false;
