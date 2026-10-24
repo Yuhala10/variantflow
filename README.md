@@ -32,6 +32,7 @@ Run the migrations in `supabase/migrations/` in order in the Supabase SQL editor
 1. `001_initial.sql` — profiles, projects, subscriptions, usage, payments (with row-level security)
 2. `002_owner_access_and_hardening.sql` — owner/admin roles, locked profile emails, one-time payment tokens
 3. `003_usage_metering.sql` — atomic monthly row-run metering
+4. `005_server_only_tables.sql` — removes direct table access for the public keys (the app reads and writes only through its API)
 
 ### Granting owner access
 
@@ -42,6 +43,15 @@ insert into public.user_roles (user_id, role, note)
 select id, 'owner', 'Founder account' from auth.users where email = 'you@example.com'
 on conflict (user_id) do update set role = excluded.role;
 ```
+
+## Payments
+
+Upgrades use Paymento payment links (`NEXT_PUBLIC_PAYMENTO_PRO_LINK`, `NEXT_PUBLIC_PAYMENTO_SCALE_LINK`). In the Paymento dashboard, set the payment-link webhook URL to `https://<your-domain>/api/webhook/paymento`.
+
+- Events are accepted only with a valid `X-Paymento-Signature` (HMAC-SHA256 of the raw body, keyed with `PAYMENTO_WEBHOOK_SECRET` or `PAYMENTO_SECRET_KEY`).
+- The plan comes from which link was paid; the payer email (`customer.email`) chooses the account.
+- Each event is processed once (`event.id`); a paid plan lasts 30 days and paying again for the same plan extends it.
+- A payment whose email matches no account is stored in `payment_events` as `pending` with no user, for manual follow-up.
 
 ## Plans
 

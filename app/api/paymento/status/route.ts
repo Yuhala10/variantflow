@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '../../../../lib/supabase/server';
 import { getSessionUser } from '../../../../lib/supabase/session';
+import { createSupabaseAdminClient } from '../../../../lib/supabase/admin';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -15,7 +16,8 @@ export async function GET(request: NextRequest) {
     const user = await getSessionUser(supabase);
     if (!user) return NextResponse.json({ status: 'UNAUTHORIZED' }, { status: 401 });
 
-    const { data: payment } = await supabase
+    const db = createSupabaseAdminClient() ?? supabase;
+    const { data: payment } = await db
       .from('payment_events')
       .select('status, tier')
       .eq('invoice_id', invoiceId)

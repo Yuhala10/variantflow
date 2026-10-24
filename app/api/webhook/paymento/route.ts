@@ -1,156 +1,142 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '../../../../lib/supabase/admin';
+import { activatePaidPlan, type ActivationResult } from '../../../../lib/payments/activate.server';
+import { hasPaymentoSigningSecret, tierForPaymentLink, verifyPaymentoSignature, verifyPaymentoToken, type PaymentoVerifyResponse } from '../../../../lib/payments/paymento';
 import { BILLING_PLANS } from '../../../../types';
 
-const SUBSCRIPTION_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
+// Events that mean money arrived for a payment link.
+const PAID_EVENTS = new Set(['payment_link.paid', 'subscription.renewed']);
+// Payloads are small; anything larger is not from Paymento.
+const MAX_BODY_BYTES = 64 * 1024;
 
-type PaymentoVerifyResponse = {
-    success?: boolean;
-    message?: string;
-    body?: {
-        token?: string;
-        orderId?: string;
-        orderStatus?: string | number;
-        additionalData?: Array<{ key?: string; value?: string }>;
-        settlement?: { expectedCryptoAmount?: number; transactions?: Array<{ txHash?: string }> };
-    };
-};
+const json = (body: Record<string, unknown>, status = 200) => NextResponse.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
 
-const getValue = (body: Record<string, unknown>, names: string[]) => {
-    for (const name of names) {
-        const value = body[name];
-        if (typeof value === 'string' && value.trim()) return value.trim();
+const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : undefined);
+
+/** Maps an activation outcome to the response Paymento expects: 200 stops delivery, 500 makes it retry. */
+function respond(result: ActivationResult) {
+    switch (result.status) {
+        case 'activated': return json({ received: true, activated: true, tier: result.tier });
+        case 'already-processed': return json({ received: true, alreadyProcessed: true });
+        case 'unmatched': return json({ received: true, activated: false, reason: 'No VariantFlow account matches the payer email; recorded for follow-up.' });
+        case 'retry':
+            console.error('Paymento webhook will be retried:', result.reason);
+            return json({ error: 'Temporary failure; please retry.' }, 500);
     }
-    return undefined;
-};
-
-const verifyPaymentoToken = async (token: string) => {
-    const apiKey = process.env.PAYMENTO_SECRET_KEY;
-    if (!apiKey) throw new Error('PAYMENTO_SECRET_KEY is not configured.');
-
-    const response = await fetch('https://api.paymento.io/v1/payment/verify', {
-        method: 'POST',
-        headers: {
-            'Api-key': apiKey,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-        },
-        body: JSON.stringify({ token }),
-        cache: 'no-store',
-    });
-
-    if (!response.ok) throw new Error(`Paymento verification failed with HTTP ${response.status}.`);
-    return await response.json() as PaymentoVerifyResponse;
-};
-
-const additionalValue = (data: PaymentoVerifyResponse['body'], keys: string[]) =>
-    data?.additionalData?.find((item) => keys.includes((item.key || '').toLowerCase()))?.value;
-
-export async function GET() {
-    return NextResponse.json({ ok: true, endpoint: 'paymento-webhook' });
 }
 
-export async function OPTIONS() {
-    return new NextResponse(null, { status: 204 });
+export async function GET() {
+    return json({ ok: true, endpoint: 'paymento-webhook' });
 }
 
 export async function POST(request: Request) {
     const admin = createSupabaseAdminClient();
-    if (!admin) return NextResponse.json({ error: 'Supabase server configuration is incomplete.' }, { status: 503 });
+    if (!admin) return json({ error: 'Server configuration is incomplete.' }, 503);
 
-    const contentType = request.headers.get('content-type') || '';
-    let input: Record<string, unknown> = {};
-    if (contentType.includes('application/json')) {
-        input = await request.json().catch(() => ({}));
-    } else {
-        const form = await request.formData();
-        form.forEach((value, key) => { input[key] = String(value); });
+    const raw = await request.text();
+    if (raw.length > MAX_BODY_BYTES) return json({ error: 'Payload too large.' }, 413);
+
+    // Payment links (what the upgrade dialog uses) send signed JSON events.
+    const signature = request.headers.get('x-paymento-signature') ?? request.headers.get('x-signature');
+    if (signature) return handlePaymentLinkEvent(admin, raw, signature, request.headers);
+
+    // The payment-request API sends a token, verified by asking Paymento directly.
+    return handlePaymentApiCallback(admin, raw, request.headers.get('content-type') ?? '');
+}
+
+async function handlePaymentLinkEvent(admin: NonNullable<ReturnType<typeof createSupabaseAdminClient>>, raw: string, signature: string, headers: Headers) {
+    if (!hasPaymentoSigningSecret()) return json({ error: 'Webhook secret is not configured.' }, 503);
+    if (!verifyPaymentoSignature(raw, signature)) {
+        console.warn('Rejected a Paymento webhook with an invalid signature.');
+        return json({ error: 'Invalid signature.' }, 401);
     }
 
-    const token = getValue(input, ['token', 'paymentToken', 'payment_token', 'orderToken', 'order_token']);
+    let body: {
+        event?: { id?: unknown; type?: unknown };
+        paymentLink?: { id?: unknown; url?: unknown; title?: unknown; status?: unknown };
+        customer?: { email?: unknown; metadata?: { order_id?: unknown; payment_id?: unknown } };
+    };
+    try {
+        body = JSON.parse(raw);
+    } catch {
+        return json({ error: 'Invalid JSON.' }, 400);
+    }
+
+    const type = text(body.event?.type) ?? text(headers.get('x-paymento-event-type'));
+    if (!type || !PAID_EVENTS.has(type)) return json({ received: true, ignored: type ?? 'unknown event' });
+    if (type === 'payment_link.paid' && text(body.paymentLink?.status) && body.paymentLink?.status !== 'paid') {
+        return json({ received: true, ignored: `link status ${String(body.paymentLink?.status)}` });
+    }
+
+    const tier = tierForPaymentLink(body.paymentLink);
+    if (!tier) {
+        console.error('Paid Paymento event for a link that is not a VariantFlow plan.', { id: body.paymentLink?.id, url: body.paymentLink?.url });
+        return json({ received: true, ignored: 'not a VariantFlow plan link' });
+    }
+
+    const eventId = text(body.event?.id) ?? text(headers.get('x-paymento-event-id'));
+    const reference = eventId ?? text(body.customer?.metadata?.payment_id) ?? text(body.customer?.metadata?.order_id);
+    if (!reference) return json({ error: 'Event has no id.' }, 400);
+
+    return respond(await activatePaidPlan(admin, {
+        key: `link:${reference}`,
+        tier,
+        email: text(body.customer?.email)?.toLowerCase() ?? null,
+        amountUsdt: BILLING_PLANS[tier].priceUsdt,
+        source: 'payment_link',
+        payload: body,
+    }));
+}
+
+async function handlePaymentApiCallback(admin: NonNullable<ReturnType<typeof createSupabaseAdminClient>>, raw: string, contentType: string) {
+    let input: Record<string, unknown> = {};
+    if (contentType.includes('application/json')) {
+        try { input = JSON.parse(raw) ?? {}; } catch { input = {}; }
+    } else {
+        new URLSearchParams(raw).forEach((value, key) => { input[key] = value; });
+    }
+
+    const token = ['token', 'paymentToken', 'payment_token', 'orderToken', 'order_token'].map((name) => text(input[name])).find(Boolean);
     if (!token) {
-        // Paymento's dashboard test may send a connectivity probe without a real payment token.
-        return NextResponse.json({ received: true, verified: false, message: 'Webhook endpoint reachable; no payment token supplied.' });
+        // A reachability probe (for example from a dashboard test) carries no payment.
+        return json({ received: true, verified: false, message: 'Webhook endpoint reachable; no payment supplied.' });
     }
 
     let verified: PaymentoVerifyResponse;
     try {
         verified = await verifyPaymentoToken(token);
     } catch (error) {
-        return NextResponse.json({ error: error instanceof Error ? error.message : 'Payment verification failed.' }, { status: 502 });
+        console.error('Paymento verify call failed:', error instanceof Error ? error.message : error);
+        return json({ error: 'Payment verification is temporarily unavailable.' }, 502);
     }
 
     const payment = verified.body;
-    const status = String(payment?.orderStatus ?? '').toLowerCase();
+    const orderStatus = String(payment?.orderStatus ?? '').toLowerCase();
     // `success` only means the verify call worked; the order itself must be approved.
-    const approved = verified.success === true && (status === '8' || status === 'approve' || status === 'approved');
-    if (!approved) {
-        return NextResponse.json({ received: true, verified: false, orderStatus: payment?.orderStatus ?? null });
-    }
+    const approved = verified.success === true && (orderStatus === '8' || orderStatus === 'approve' || orderStatus === 'approved');
+    if (!approved) return json({ received: true, verified: false, orderStatus: payment?.orderStatus ?? null });
 
-    const invoiceId = payment?.orderId || token;
-    const [byInvoice, byToken] = await Promise.all([
-        admin.from('payment_events').select('id').eq('invoice_id', invoiceId).maybeSingle(),
-        admin.from('payment_events').select('id').eq('payment_token', token).maybeSingle(),
-    ]);
-    const existing = byInvoice.data || byToken.data;
-    if (existing) return NextResponse.json({ received: true, verified: true, alreadyProcessed: true });
-
-    // The plan and amount must come from Paymento's verified response, never from the unauthenticated request body.
+    // Plan and amount come only from Paymento's verified response, never from the request body.
     const paidAmount = Number(payment?.settlement?.expectedCryptoAmount ?? NaN);
-    if (!Number.isFinite(paidAmount)) {
-        return NextResponse.json({ error: 'Verified payment is missing the paid amount.' }, { status: 422 });
-    }
+    if (!Number.isFinite(paidAmount)) return json({ error: 'Verified payment is missing the paid amount.' }, 422);
     const covers = (plan: 'PRO' | 'SCALE') => paidAmount + 0.01 >= BILLING_PLANS[plan].priceUsdt;
-    const namedTier = additionalValue(payment, ['plan', 'tier', 'variantflow_plan'])?.toUpperCase();
-    const tier = namedTier === 'PRO' || namedTier === 'SCALE'
-        ? namedTier
-        : covers('SCALE') ? 'SCALE' : covers('PRO') ? 'PRO' : null;
-    if (!tier || !covers(tier)) {
-        return NextResponse.json({ error: 'Verified payment amount does not cover a VariantFlow plan.' }, { status: 422 });
-    }
+    const additional = (keys: string[]) => payment?.additionalData?.find((item) => keys.includes((item.key || '').toLowerCase()))?.value;
+    const named = additional(['plan', 'tier', 'variantflow_plan'])?.toUpperCase();
+    const tier = named === 'PRO' || named === 'SCALE' ? named : covers('SCALE') ? 'SCALE' : covers('PRO') ? 'PRO' : null;
+    if (!tier || !covers(tier)) return json({ error: 'Verified payment amount does not cover a VariantFlow plan.' }, 422);
 
-    // Each token is applied once (checked above), so the email only chooses which account receives a paid plan.
-    const email = (additionalValue(payment, ['email', 'customeremail', 'customer_email'])
-        || getValue(input, ['email', 'customerEmail', 'customer_email']))?.toLowerCase();
-    if (!email) {
-        return NextResponse.json({ error: 'Approved payment is missing the customer email.' }, { status: 422 });
-    }
+    // The token can only be applied once, so the email only chooses which account receives the plan.
+    const email = (additional(['email', 'customeremail', 'customer_email'])
+        ?? ['email', 'customerEmail', 'customer_email'].map((name) => text(input[name])).find(Boolean))?.toLowerCase() ?? null;
 
-    const { data: profile } = await admin.from('profiles').select('id').eq('email', email).maybeSingle();
-    if (!profile) return NextResponse.json({ error: 'No VariantFlow account matches the payment email.' }, { status: 404 });
-
-    const { data: current } = await admin.from('subscriptions').select('current_period_end').eq('user_id', profile.id).maybeSingle();
-    const now = Date.now();
-    const currentEnd = current?.current_period_end ? new Date(current.current_period_end).getTime() : 0;
-    const periodEnd = new Date(Math.max(now, currentEnd) + SUBSCRIPTION_PERIOD_MS).toISOString();
-
-    const transactionHash = payment?.settlement?.transactions?.find((transaction) => transaction.txHash)?.txHash || null;
-    const paymentEvent = {
-        user_id: profile.id,
-        invoice_id: invoiceId,
+    return respond(await activatePaidPlan(admin, {
+        key: payment?.orderId || token,
         tier,
-        amount_usdt: paidAmount,
-        transaction_hash: transactionHash,
-        status: 'confirmed',
+        email,
+        amountUsdt: paidAmount,
+        transactionHash: payment?.settlement?.transactions?.find((transaction) => transaction.txHash)?.txHash ?? null,
+        paymentToken: token,
+        source: 'payment_api',
         payload: verified,
-        confirmed_at: new Date(now).toISOString(),
-    };
-    let { error: eventError } = await admin.from('payment_events').insert({ ...paymentEvent, payment_token: token });
-    // Until migration 002 adds payment_token, record the payment without it (invoice_id stays unique).
-    if (eventError && /payment_token/.test(eventError.message)) {
-        ({ error: eventError } = await admin.from('payment_events').insert(paymentEvent));
-    }
-    // Unique constraints on invoice_id and payment_token make a concurrent duplicate fail here.
-    if (eventError) return NextResponse.json({ error: 'Payment could not be recorded.' }, { status: 409 });
-
-    await admin.from('subscriptions').upsert({
-        user_id: profile.id,
-        tier,
-        status: 'active',
-        current_period_end: periodEnd,
-        updated_at: new Date(now).toISOString(),
-    }, { onConflict: 'user_id' });
-
-    return NextResponse.json({ received: true, verified: true, tier });
+    }));
 }
